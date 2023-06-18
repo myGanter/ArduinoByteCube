@@ -2,6 +2,7 @@
 #define DATA_PIN 8 //DS
 #define LATCH_PIN 9 //STCP
 #define CLOCK_PIN 10 //SHCP
+#define SCHEMA_BUG << 1 //a bug in my scheme, remove it if the scheme is correct
 #define CUBE_RENDER_LAYER_DELAY 500 //micros
 #define CUBE_CONTROLLER_DELAY 20 //millis
 #define RAIN_EFFECT_DELAY 70 //millis
@@ -117,15 +118,59 @@ uint8_t CubeBuffer[CUBE_DIMENSION][CUBE_DIMENSION];
 AppState CurrentAppState = FullMatrixOff;
 
 
+//-------------------- drawing
 void SetCube(uint8_t value)
 {
   SetArrRank2<uint8_t>((uint8_t*)CubeBuffer, CUBE_DIMENSION, CUBE_DIMENSION, value);
 }
 
+//layer = x
+//line = y
+//cell = z
 void SetPoint(int layer, int line, int cell)
 {
   CubeBuffer[layer][line] |= 1 << cell; 
 }
+
+void UnSetPoint(int layer, int line, int cell)
+{
+  CubeBuffer[layer][line] &= !(1 << cell); 
+}
+
+void SetPlaneX(int layer, int value)
+{
+  for (int line = 0; line < CUBE_DIMENSION; ++line)
+  {
+    CubeBuffer[layer][line] |= value;
+  }
+}
+
+void SetPalneY(int line, int value)
+{
+  for (int layer = 0; layer < CUBE_DIMENSION; ++layer)
+  {
+    CubeBuffer[layer][line] |= value;
+  }
+}
+
+void SetPlaneZ(int cell, int value)
+{
+  if (value == 0)
+    return;
+
+  for (int layer = 0; layer < CUBE_DIMENSION; ++layer)
+  {
+    int byteLayer = 1 << layer;
+    if ((value & byteLayer) != byteLayer)
+      continue;
+    
+    for (int line = 0; line < CUBE_DIMENSION; ++line)
+    {
+      CubeBuffer[layer][line] |= 1 << cell;
+    }
+  }
+}
+//-------------------- end drawing
 
 
 int CurrentLayerRender = 0;
@@ -144,10 +189,10 @@ void CubeRenderWorkerClbk(bool eventExec)
   }
 
   FastSetPin(LATCH_PIN, LOW);
-  FastShiftOut(DATA_PIN, CLOCK_PIN, MSBFIRST, (1 << CurrentLayerRender) << 1);
+  FastShiftOut(DATA_PIN, CLOCK_PIN, MSBFIRST, (1 << CurrentLayerRender) SCHEMA_BUG);
   for (int row = CUBE_DIMENSION - 1; row > -1; --row)
   {
-    FastShiftOut(DATA_PIN, CLOCK_PIN, MSBFIRST, (CubeBuffer[CurrentLayerRender][row]) << 1);
+    FastShiftOut(DATA_PIN, CLOCK_PIN, MSBFIRST, (CubeBuffer[CurrentLayerRender][row]) SCHEMA_BUG);
   }
   FastSetPin(LATCH_PIN, HIGH);
 
@@ -190,8 +235,20 @@ int r = 0;
 int c = 0;
 int state = 0;
 bool ss = false;
+int f = 0;
+int fkey = false;
 void TestEffectWorkerClbk(bool eventExec)
 {
+  //200
+  SetCube(0);
+  SetPlaneX(f, 255);
+  SetPalneY(f, 255);
+  SetPlaneZ(f, 255);
+  f += fkey ? -1 : 1;
+  if (f == CUBE_DIMENSION - 1 || f == 0)
+    fkey = !fkey;
+
+
   //1000
   /*SetCube(0);
   if (ss)
@@ -244,7 +301,7 @@ void TestEffectWorkerClbk(bool eventExec)
 
 
   //1000
-  SetCube(0);
+  /*SetCube(0);
   if (state == 0)
   {
     for (int i = 0; i < CUBE_DIMENSION; ++i)
@@ -308,9 +365,9 @@ void TestEffectWorkerClbk(bool eventExec)
 
   state++;   
   if (state == 6)
-    state = 0;
+    state = 0;*/
 }
-TimeWorker TestEffectWorker = TimeWorker(1000, TestEffectWorkerClbk);
+TimeWorker TestEffectWorker = TimeWorker(70, TestEffectWorkerClbk);
 
 
 void CubeControllerWorkerClbk(bool eventExec)
