@@ -2,7 +2,9 @@
 #define DATA_PIN 8 //DS
 #define LATCH_PIN 9 //STCP
 #define CLOCK_PIN 10 //SHCP
-#define CUBE_RENDER_LAYER_DELAY 50
+#define CUBE_RENDER_LAYER_DELAY 500 //micros
+#define CUBE_CONTROLLER_DELAY 20 //millis
+#define RAIN_EFFECT_DELAY 70 //millis
 
 //-------------------- common
 void FastSetPin(uint8_t pin, uint8_t val) 
@@ -102,8 +104,17 @@ class TimeWorker
 //-------------------- end time worker
 
 
+enum AppState : int
+{
+  FullMatrixOff = 0,
+  FullMatrixOn = 1,
+  RainEffect = 2,
+  TestEffect = 3
+};
+
+
 uint8_t CubeBuffer[CUBE_DIMENSION][CUBE_DIMENSION];
-int CurrentLayerRender = 0;
+AppState CurrentAppState = FullMatrixOff;
 
 
 void SetCube(uint8_t value)
@@ -117,43 +128,33 @@ void SetPoint(int layer, int line, int cell)
 }
 
 
+int CurrentLayerRender = 0;
 void CubeRenderWorkerClbk(bool eventExec)
 {
   if (CurrentLayerRender == CUBE_DIMENSION)
-  {
+  {   
     FastSetPin(LATCH_PIN, LOW);
-
     for (int layer = 0; layer < CUBE_DIMENSION + 1; ++layer)
-      FastShiftOut(DATA_PIN, CLOCK_PIN, MSBFIRST, 0);
-
+    {
+      FastShiftOut(DATA_PIN, CLOCK_PIN, LSBFIRST, 0);
+    }
     FastSetPin(LATCH_PIN, HIGH);
 
     CurrentLayerRender = 0;
   }
 
   FastSetPin(LATCH_PIN, LOW);
-
   FastShiftOut(DATA_PIN, CLOCK_PIN, MSBFIRST, (1 << CurrentLayerRender) << 1);
-
   for (int row = CUBE_DIMENSION - 1; row > -1; --row)
   {
     FastShiftOut(DATA_PIN, CLOCK_PIN, MSBFIRST, (CubeBuffer[CurrentLayerRender][row]) << 1);
   }
-
   FastSetPin(LATCH_PIN, HIGH);
 
   CurrentLayerRender++;  
 }
 TimeWorker CubeRenderWorker = TimeWorker(CUBE_RENDER_LAYER_DELAY, CubeRenderWorkerClbk, NULL, true, true);
 
-
-unsigned long patms = 0;
-
-int l = 0;
-int r = 0;
-int c = 0;
-
-int state = 0;
 
 struct Point
 {
@@ -163,17 +164,190 @@ struct Point
 };
 const int rainN = 10; 
 Point rain[rainN];
+void RainEffectWorkerClbk(bool eventExec)
+{
+  SetCube(0);
+  
+  for (int i = 0; i < rainN; ++i)
+  {
+    rain[i].Y++;
+    
+    if (rain[i].Y == CUBE_DIMENSION)
+    {
+      rain[i].X = random(CUBE_DIMENSION);
+      rain[i].Y = random(CUBE_DIMENSION);       
+      rain[i].Y = 0;
+    }
+
+    SetPoint(rain[i].X, rain[i].Y, rain[i].Z);       
+  }
+}
+TimeWorker RainEffectWorker = TimeWorker(RAIN_EFFECT_DELAY, RainEffectWorkerClbk);
+
+
+int l = 0;
+int r = 0;
+int c = 0;
+int state = 0;
+bool ss = false;
+void TestEffectWorkerClbk(bool eventExec)
+{
+  //1000
+  /*SetCube(0);
+  if (ss)
+  {
+    for (int i = 0; i < CUBE_DIMENSION; ++i)
+    {
+      SetPoint(0, i, 0);
+      SetPoint(0, i, CUBE_DIMENSION - 1);
+      SetPoint(0, 0, i);
+      SetPoint(0, CUBE_DIMENSION - 1, i);
+
+      SetPoint(CUBE_DIMENSION - 1, i, 0);
+      SetPoint(CUBE_DIMENSION - 1, i, CUBE_DIMENSION - 1);
+      SetPoint(CUBE_DIMENSION - 1, 0, i);
+      SetPoint(CUBE_DIMENSION - 1, CUBE_DIMENSION - 1, i);
+
+      SetPoint(i, 0, 0);
+      SetPoint(i, CUBE_DIMENSION - 1, 0);
+      SetPoint(i, 0, CUBE_DIMENSION - 1);
+      SetPoint(i, CUBE_DIMENSION - 1, CUBE_DIMENSION - 1);
+    }
+  }
+  else
+  {
+    SetCube(255);  
+  }
+  ss = !ss;*/
+
+
+  //500
+  /*SetCube(0); 
+  SetPoint(l, r, c);
+  c++;
+  if (c >= CUBE_DIMENSION)
+  {
+    r++;
+    c = 0;
+  }
+  if (r >= CUBE_DIMENSION)
+  {
+    l++;
+    r = 0;
+  }
+  if (l >= CUBE_DIMENSION)
+  {
+    l = 0;
+    r = 0;
+    c = 0;
+  }*/
+
+
+  //1000
+  SetCube(0);
+  if (state == 0)
+  {
+    for (int i = 0; i < CUBE_DIMENSION; ++i)
+    {
+      for (int j = 0; j < CUBE_DIMENSION; ++j)
+      {
+        SetPoint(0, i, j);        
+      }
+    }      
+  }
+  else if (state == 1)
+  {
+    for (int i = 0; i < CUBE_DIMENSION; ++i)
+    {
+      for (int j = 0; j < CUBE_DIMENSION; ++j)
+      {
+        SetPoint(i, CUBE_DIMENSION - 1, j);        
+      }
+    }         
+  }
+  else if (state == 2)
+  {
+    for (int i = 0; i < CUBE_DIMENSION; ++i)
+    {
+      for (int j = 0; j < CUBE_DIMENSION; ++j)
+      {
+        SetPoint(i, j, 0);        
+      }
+    } 
+  }
+  else if (state == 3)
+  {
+    for (int i = 0; i < CUBE_DIMENSION; ++i)
+    {
+      for (int j = 0; j < CUBE_DIMENSION; ++j)
+      {
+        SetPoint(i, 0, j);        
+      }
+    }         
+  }
+  else if (state == 4)
+  {
+    for (int i = 0; i < CUBE_DIMENSION; ++i)
+    {
+      for (int j = 0; j < CUBE_DIMENSION; ++j)
+      {
+        SetPoint(CUBE_DIMENSION - 1, i, j);        
+      }
+    } 
+  }
+  else if (state == 5)     
+  {
+    for (int i = 0; i < CUBE_DIMENSION; ++i)
+    {
+      for (int j = 0; j < CUBE_DIMENSION; ++j)
+      {
+        SetPoint(i, j, CUBE_DIMENSION - 1);        
+      }
+    } 
+  }
+
+  state++;   
+  if (state == 6)
+    state = 0;
+}
+TimeWorker TestEffectWorker = TimeWorker(1000, TestEffectWorkerClbk);
+
+
+void CubeControllerWorkerClbk(bool eventExec)
+{
+  switch (CurrentAppState)
+  {
+  case FullMatrixOff:
+    SetCube(0);
+    break;
+  case FullMatrixOn:
+    SetCube(255);
+    break;
+  case RainEffect:
+    RainEffectWorker.Update();
+    break;
+  case TestEffect:
+    TestEffectWorker.Update();
+    break;
+  default:
+    SetCube(0);
+    break;
+  }
+}
+TimeWorker CubeControllerWorker = TimeWorker(CUBE_CONTROLLER_DELAY, CubeControllerWorkerClbk);
+
 
 void setup() 
 {
   Serial.begin(9600);
+
   randomSeed(analogRead(0));
 
   pinMode(DATA_PIN, OUTPUT);
   pinMode(CLOCK_PIN, OUTPUT);
   pinMode(LATCH_PIN, OUTPUT);
   
-  SetCube(0);
+  CurrentAppState = TestEffect;
 
   for (int i = 0; i < rainN; ++i)
   {
@@ -181,156 +355,11 @@ void setup()
     rain[i].Y = random(CUBE_DIMENSION);
     rain[i].Z = random(CUBE_DIMENSION);
   }
-
-  /*for (int i = 0; i < CUBE_DIMENSION; ++i)
-  {
-    SetPoint(0, i, 0);
-    SetPoint(0, i, CUBE_DIMENSION - 1);
-    SetPoint(0, 0, i);
-    SetPoint(0, CUBE_DIMENSION - 1, i);
-
-    SetPoint(CUBE_DIMENSION - 1, i, 0);
-    SetPoint(CUBE_DIMENSION - 1, i, CUBE_DIMENSION - 1);
-    SetPoint(CUBE_DIMENSION - 1, 0, i);
-    SetPoint(CUBE_DIMENSION - 1, CUBE_DIMENSION - 1, i);
-
-    SetPoint(i, 0, 0);
-    SetPoint(i, CUBE_DIMENSION - 1, 0);
-    SetPoint(i, 0, CUBE_DIMENSION - 1);
-    SetPoint(i, CUBE_DIMENSION - 1, CUBE_DIMENSION - 1);
-  }*/
-
-  //SetCube(255);  
 }
 
 void loop() 
 {
-  /*if ((millis() - patms) >= 70)
-  {
-    patms = millis();
-    SetCube(0);
-  
-    for (int i = 0; i < rainN; ++i)
-    {
-      rain[i].Y++;
-      
-      if (rain[i].Y == CUBE_DIMENSION)
-      {
-        rain[i].X = random(CUBE_DIMENSION);
-        rain[i].Y = random(CUBE_DIMENSION);       
-        rain[i].Y = 0;
-      }
-
-      SetPoint(rain[i].X, rain[i].Y, rain[i].Z);       
-    }
-  }*/
-
-  if ((millis() - patms) >= 5000)
-  {
-    patms = millis();
-    SetCube(0);
-
-    SetPoint(l, r, c);
-    c++;
-    if (c >= CUBE_DIMENSION)
-    {
-      r++;
-      c = 0;
-    }
-    if (r >= CUBE_DIMENSION)
-    {
-      l++;
-      r = 0;
-    }
-    if (l >= CUBE_DIMENSION)
-    {
-      l = 0;
-      r = 0;
-      c = 0;
-    }
-  }
-
-  /*if ((millis() - patms) >= 1000)
-  {
-    if (state == 6)
-    {
-      state = 0;        
-    } 
-    else
-    {
-      patms = millis();
-      SetCube(0);
-
-      if (state == 0)
-      {
-        for (int i = 0; i < CUBE_DIMENSION; ++i)
-        {
-          for (int j = 0; j < CUBE_DIMENSION; ++j)
-          {
-            SetPoint(0, i, j);        
-          }
-        }      
-      }
-      else if (state == 1)
-      {
-        for (int i = 0; i < CUBE_DIMENSION; ++i)
-        {
-          for (int j = 0; j < CUBE_DIMENSION; ++j)
-          {
-            SetPoint(i, CUBE_DIMENSION - 1, j);        
-          }
-        }         
-      }
-      else if (state == 2)
-      {
-        for (int i = 0; i < CUBE_DIMENSION; ++i)
-        {
-          for (int j = 0; j < CUBE_DIMENSION; ++j)
-          {
-            SetPoint(i, j, 0);        
-          }
-        } 
-      }
-      else if (state == 3)
-      {
-        for (int i = 0; i < CUBE_DIMENSION; ++i)
-        {
-          for (int j = 0; j < CUBE_DIMENSION; ++j)
-          {
-            SetPoint(i, 0, j);        
-          }
-        }         
-      }
-      else if (state == 4)
-      {
-        for (int i = 0; i < CUBE_DIMENSION; ++i)
-        {
-          for (int j = 0; j < CUBE_DIMENSION; ++j)
-          {
-            SetPoint(CUBE_DIMENSION - 1, i, j);        
-          }
-        } 
-      }
-      else if (state == 5)     
-      {
-        for (int i = 0; i < CUBE_DIMENSION; ++i)
-        {
-          for (int j = 0; j < CUBE_DIMENSION; ++j)
-          {
-            SetPoint(i, j, CUBE_DIMENSION - 1);        
-          }
-        } 
-      }
-
-      state++;
-    }    
-  }*/
-
-
-
-
-
-
+  CubeControllerWorker.Update();
   CubeRenderWorker.Update();
   
   /*for (int i = 0; i < CUBE_DIMENSION; ++i)
