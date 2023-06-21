@@ -3,9 +3,17 @@
 #define LATCH_PIN 9 //STCP
 #define CLOCK_PIN 10 //SHCP
 #define SCHEMA_BUG << 1 //a bug in my scheme, remove it if the scheme is correct
+
 #define CUBE_RENDER_LAYER_DELAY 500 //micros
-#define CUBE_CONTROLLER_DELAY 20 //millis
+#define CUBE_CONTROLLER_DELAY 10 //millis
+
 #define RAIN_EFFECT_DELAY 70 //millis
+
+#define PONG_EFFECT_DELAY 40 //millis
+#define PONG_ELEMENT_COUNT 1
+#define PONG_LAIL_LENGHT 5
+#define PONG_THRESHOLD 20 //%
+
 
 //-------------------- common
 void FastSetPin(uint8_t pin, uint8_t val) 
@@ -110,7 +118,15 @@ enum AppState : int
   FullMatrixOff = 0,
   FullMatrixOn = 1,
   RainEffect = 2,
-  TestEffect = 3
+  PongEffect = 3,
+  TestEffect = 4
+};
+
+struct Point
+{
+  int X;
+  int Y;
+  int Z;
 };
 
 
@@ -170,6 +186,24 @@ void SetPlaneZ(int cell, int value)
     }
   }
 }
+
+void Line(int x1, int y1, int z1, int x2, int y2, int z2)
+{
+  double l = sqrt(pow(x2 - x1, 2) + pow(y2 - y1, 2) + pow(z2 - z1, 2));
+  double dX = (x2 - x1) / l;
+  double dY = (y2 - y1) / l;
+  double dZ = (z2 - z1) / l;
+
+  double x = x1, y = y1, z = z1;
+
+  for (int i = 0; i <= round(l); ++i)
+  {
+    SetPoint(round(x), round(y), round(z));
+    x += dX;
+    y += dY;
+    z += dZ;
+  }
+}
 //-------------------- end drawing
 
 
@@ -201,12 +235,6 @@ void CubeRenderWorkerClbk(bool eventExec)
 TimeWorker CubeRenderWorker = TimeWorker(CUBE_RENDER_LAYER_DELAY, CubeRenderWorkerClbk, NULL, true, true);
 
 
-struct Point
-{
-  int X;
-  int Y;
-  int Z;
-};
 const int rainN = 10; 
 Point rain[rainN];
 void RainEffectWorkerClbk(bool eventExec)
@@ -240,13 +268,13 @@ int fkey = false;
 void TestEffectWorkerClbk(bool eventExec)
 {
   //200
-  SetCube(0);
+  /*SetCube(0);
   SetPlaneX(f, 255);
   SetPalneY(f, 255);
   SetPlaneZ(f, 255);
   f += fkey ? -1 : 1;
   if (f == CUBE_DIMENSION - 1 || f == 0)
-    fkey = !fkey;
+    fkey = !fkey;*/
 
 
   //1000
@@ -370,6 +398,82 @@ void TestEffectWorkerClbk(bool eventExec)
 TimeWorker TestEffectWorker = TimeWorker(70, TestEffectWorkerClbk);
 
 
+Point Pongs[PONG_ELEMENT_COUNT][PONG_LAIL_LENGHT];
+Point PongDirections[PONG_ELEMENT_COUNT];
+int PongTailIndexes[PONG_ELEMENT_COUNT];
+void InitPong()
+{
+  for (int i = 0; i < PONG_ELEMENT_COUNT; ++i)
+  {
+    PongTailIndexes[i] = PONG_LAIL_LENGHT - 1;
+    PongDirections[i] = { .X = 1, .Y = 1, .Z = 1 };
+  }
+}
+void PongWorkerClbk(bool eventExec)
+{
+  SetCube(0);
+  
+  for (int i = 0; i < PONG_ELEMENT_COUNT; ++i)
+  {
+    Point past = Pongs[i][0];
+    Point direction = PongDirections[i];
+
+    Pongs[i][0].X += direction.X;
+    Pongs[i][0].Y += direction.Y;
+    Pongs[i][0].Z += direction.Z;
+
+    if (PONG_LAIL_LENGHT > 1)
+    {
+      Pongs[i][PongTailIndexes[i]] = past;
+
+      PongTailIndexes[i]--;
+
+      if (PongTailIndexes[i] == 0)
+        PongTailIndexes[i] = PONG_LAIL_LENGHT - 1;
+    }
+
+    if (Pongs[i][0].X >= CUBE_DIMENSION)
+    {
+      Pongs[i][0].X = CUBE_DIMENSION - 1;
+      PongDirections[i].X = random(100) > PONG_THRESHOLD ? -direction.X : direction.X;
+    }
+    else if (Pongs[i][0].X < 0)
+    {
+      Pongs[i][0].X = 0;
+      PongDirections[i].X = random(100) > PONG_THRESHOLD ? -direction.X : direction.X;
+    }
+
+    if (Pongs[i][0].Y >= CUBE_DIMENSION)
+    {
+      Pongs[i][0].Y = CUBE_DIMENSION - 1;
+      PongDirections[i].Y = random(100) > PONG_THRESHOLD ? -direction.Y : direction.Y;
+    }
+    else if (Pongs[i][0].Y < 0)
+    {
+      Pongs[i][0].Y = 0;
+      PongDirections[i].Y = random(100) > PONG_THRESHOLD ? -direction.Y : direction.Y;
+    }
+
+    if (Pongs[i][0].Z >= CUBE_DIMENSION)
+    {
+      Pongs[i][0].Z = CUBE_DIMENSION - 1;
+      PongDirections[i].Z = random(100) > PONG_THRESHOLD ? -direction.Z : direction.Z;
+    }
+    else if (Pongs[i][0].Z < 0)
+    {
+      Pongs[i][0].Z = 0;
+      PongDirections[i].Z = random(100) > PONG_THRESHOLD ? -direction.Z : direction.Z;
+    }
+
+    for (int j = 0; j < PONG_LAIL_LENGHT; ++j)
+    {
+      SetPoint(Pongs[i][j].X, Pongs[i][j].Y, Pongs[i][j].Z);
+    }
+  }
+}
+TimeWorker PongWorker = TimeWorker(PONG_EFFECT_DELAY, PongWorkerClbk);
+
+
 void CubeControllerWorkerClbk(bool eventExec)
 {
   switch (CurrentAppState)
@@ -382,6 +486,9 @@ void CubeControllerWorkerClbk(bool eventExec)
     break;
   case RainEffect:
     RainEffectWorker.Update();
+    break;
+  case PongEffect:
+    PongWorker.Update();
     break;
   case TestEffect:
     TestEffectWorker.Update();
@@ -398,13 +505,15 @@ void setup()
 {
   Serial.begin(9600);
 
-  randomSeed(analogRead(0));
+  randomSeed(analogRead(2));
 
   pinMode(DATA_PIN, OUTPUT);
   pinMode(CLOCK_PIN, OUTPUT);
   pinMode(LATCH_PIN, OUTPUT);
   
-  CurrentAppState = TestEffect;
+  CurrentAppState = PongEffect;
+
+  InitPong();
 
   for (int i = 0; i < rainN; ++i)
   {
