@@ -8,6 +8,7 @@
 #define CUBE_CONTROLLER_DELAY 10 //millis
 
 #define RAIN_EFFECT_DELAY 70 //millis
+#define RAIN_DROP_COUNT 10
 
 #define PONG_EFFECT_DELAY 40 //millis
 #define PONG_ELEMENT_COUNT 1
@@ -34,6 +35,13 @@ struct Point
   int8_t Z;
 };
 
+struct PointFloat
+{
+  float X;
+  float Y;
+  float Z;
+};
+
 
 const int MaxCubeLenght2 = CUBE_DIMENSION * CUBE_DIMENSION;
 const int MaxCubeLenght = CUBE_DIMENSION * CUBE_DIMENSION * CUBE_DIMENSION;
@@ -42,6 +50,12 @@ AppState CurrentAppState = FullMatrixOff;
 
 
 //-------------------- common
+float RandomFloat(uint8_t accuracy = 1)
+{
+  int divider = pow(10, accuracy);
+  return random(divider) / (float)divider;
+}
+
 void GetCoordinateFromIndex(int index, int8_t *x, int8_t *y, int8_t *z)
 {
   int tmp = index % MaxCubeLenght2;
@@ -431,24 +445,42 @@ void CubeRenderWorkerClbk(bool eventExec)
 TimeWorker CubeRenderWorker = TimeWorker(CUBE_RENDER_LAYER_DELAY, CubeRenderWorkerClbk, NULL, true, true);
 
 
-const int rainN = 10; 
-Point rain[rainN];
+PointFloat Rain[RAIN_DROP_COUNT];
+float RainSpeed[RAIN_DROP_COUNT];
+void SetRainRandomSpeed(int i)
+{
+  float newSpeed = RandomFloat(3);
+  RainSpeed[i] = newSpeed < 0.4 ? 1.0 - newSpeed : newSpeed;
+}
+void InitRain()
+{
+  for (int i = 0; i < RAIN_DROP_COUNT; ++i)
+  {
+    Rain[i].X = random(CUBE_DIMENSION);
+    Rain[i].Z = random(CUBE_DIMENSION);       
+    Rain[i].Y = random(CUBE_DIMENSION);
+
+    SetRainRandomSpeed(i);
+  }
+}
 void RainEffectWorkerClbk(bool eventExec)
 {
   SetCube(0);
   
-  for (int i = 0; i < rainN; ++i)
+  for (int i = 0; i < RAIN_DROP_COUNT; ++i)
   {
-    rain[i].Y++;
+    Rain[i].Y += RainSpeed[i];
     
-    if (rain[i].Y == CUBE_DIMENSION)
+    if ((int8_t)Rain[i].Y == CUBE_DIMENSION)
     {
-      rain[i].X = random(CUBE_DIMENSION);
-      rain[i].Y = random(CUBE_DIMENSION);       
-      rain[i].Y = 0;
+      Rain[i].X = random(CUBE_DIMENSION);
+      Rain[i].Z = random(CUBE_DIMENSION);       
+      Rain[i].Y = 0;
+
+      SetRainRandomSpeed(i);
     }
 
-    SetPoint(rain[i].X, rain[i].Y, rain[i].Z);       
+    SetPoint(Rain[i].X, Rain[i].Y, Rain[i].Z);       
   }
 }
 TimeWorker RainEffectWorker = TimeWorker(RAIN_EFFECT_DELAY, RainEffectWorkerClbk);
@@ -792,16 +824,10 @@ void setup()
   pinMode(CLOCK_PIN, OUTPUT);
   pinMode(LATCH_PIN, OUTPUT);
   
-  CurrentAppState = BreathEffect;
+  CurrentAppState = RainEffect;
 
   InitPong();
-
-  for (int i = 0; i < rainN; ++i)
-  {
-    rain[i].X = random(CUBE_DIMENSION);
-    rain[i].Y = random(CUBE_DIMENSION);
-    rain[i].Z = random(CUBE_DIMENSION);
-  }
+  InitRain();
 }
 
 void loop() 
