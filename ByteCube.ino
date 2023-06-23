@@ -14,8 +14,43 @@
 #define PONG_LAIL_LENGHT 5
 #define PONG_THRESHOLD 20 //%
 
+#define BREATH_DELAY 70 //millis
+#define BREATH_END_DELAY 1400 //millis
+
+enum AppState : int
+{
+  FullMatrixOff = 0,
+  FullMatrixOn = 1,
+  RainEffect = 2,
+  PongEffect = 3,
+  BreathEffect = 4,
+  TestEffect = 5
+};
+
+struct Point
+{
+  int8_t X;
+  int8_t Y;
+  int8_t Z;
+};
+
+
+const int MaxCubeLenght2 = CUBE_DIMENSION * CUBE_DIMENSION;
+const int MaxCubeLenght = CUBE_DIMENSION * CUBE_DIMENSION * CUBE_DIMENSION;
+uint8_t CubeBuffer[CUBE_DIMENSION][CUBE_DIMENSION];
+AppState CurrentAppState = FullMatrixOff;
+
 
 //-------------------- common
+void GetCoordinateFromIndex(int index, int8_t *x, int8_t *y, int8_t *z)
+{
+  int tmp = index % MaxCubeLenght2;
+
+  *x = index / MaxCubeLenght2;
+  *y = tmp / CUBE_DIMENSION;
+  *z = tmp % CUBE_DIMENSION;
+}
+
 void FastSetPin(uint8_t pin, uint8_t val) 
 { 	
 	if (pin < 8) 
@@ -113,25 +148,173 @@ class TimeWorker
 //-------------------- end time worker
 
 
-enum AppState : int
+//-------------------- stack
+template<typename T> class Node
 {
-  FullMatrixOff = 0,
-  FullMatrixOn = 1,
-  RainEffect = 2,
-  PongEffect = 3,
-  TestEffect = 4
+  public:
+    T Value;
+    Node* NextNode;
+    Node(const T value, Node* nextNode)
+    {
+      Value = value;
+      NextNode = nextNode;
+    }
 };
 
-struct Point
+template<typename T> class NodeIterator
 {
-  int X;
-  int Y;
-  int Z;
+  private:
+    Node<T>* _currentNode;
+
+  public:
+    NodeIterator(Node<T> *startNode)
+    {
+      _currentNode = startNode;
+    }
+
+    bool MoveNext()
+    {
+      if (_currentNode->NextNode == NULL)
+        return false;
+
+      _currentNode = _currentNode->NextNode;
+      return true;
+    }
+
+    T GetValue()
+    {
+      return _currentNode->Value;
+    }
+
+    T* GetReferenceValue()
+    {
+      return &_currentNode->Value;
+    }
+
+    void SetValue(T value)
+    {
+      _currentNode->Value = value;
+    }
 };
 
+template<typename T> class Stack
+{
+  private:
+    Node<T>* _currentNode;
+    unsigned int _count;
+    T _default;
 
-uint8_t CubeBuffer[CUBE_DIMENSION][CUBE_DIMENSION];
-AppState CurrentAppState = FullMatrixOff;
+  public:
+    Stack()
+    {
+      _currentNode = NULL;
+      _count = 0;
+    }
+
+    void Clear()
+    {
+      while (_count != 0)
+      {
+        Pop();
+      }
+    }
+
+    ~Stack()
+    {
+      Clear();
+    }
+
+    void Push (const T item)
+    {
+      Node<T>* newNode = new Node<T>(item, NULL);
+      
+      if (_count == 0)
+      {
+        _currentNode = newNode;
+      }
+      else
+      {
+        newNode->NextNode = _currentNode;
+        _currentNode = newNode;
+      }
+
+      _count++;
+    }
+    
+    T Pop()
+    {
+      if (_count == 0)
+        return _default;
+
+      Node<T>* current = _currentNode;
+      T currentVal = current->Value;
+      _currentNode = current->NextNode;
+      _count--;
+      delete current;
+
+      return currentVal;
+    }
+
+    bool Contains(T val)
+    {
+      if (_count == 0)
+        return false;
+
+      Node<T>* node = _currentNode;
+      while (node != NULL)
+      {
+        if (memcmp(&node->Value, &val, sizeof(T)) == 0)
+          return true;
+
+        node = node->NextNode;
+      }
+
+      return false;
+    }
+
+    void Delete(T val)
+    {
+      if (_count == 0)
+        return;
+
+      Node<T>* node = _currentNode;
+
+      if (memcmp(&node->Value, &val, sizeof(T)) == 0)
+      {
+        _currentNode = node->NextNode;
+
+        delete node;
+        _count--;
+        return;
+      }
+      
+      while (node->NextNode != NULL)
+      {
+        if (memcmp(&node->NextNode->Value, &val, sizeof(T)) == 0)
+        {
+          Node<T>* delNode = node->NextNode;
+          node->NextNode = delNode->NextNode;
+
+          delete delNode;
+          _count--;
+          return;
+        }
+
+        node = node->NextNode;
+      }
+    }
+
+    unsigned int Count()
+    {
+      return _count;
+    }
+
+    NodeIterator<T>* CreateIterator()
+    {
+      return new NodeIterator<T>(_currentNode);
+    }
+};
+//-------------------- end stack
 
 
 //-------------------- drawing
@@ -150,7 +333,20 @@ void SetPoint(int layer, int line, int cell)
 
 void UnSetPoint(int layer, int line, int cell)
 {
-  CubeBuffer[layer][line] &= !(1 << cell); 
+  CubeBuffer[layer][line] &= ~(1 << cell); 
+}
+
+void SetPoint(int layer, int line, int cell, bool value)
+{
+  if (value)
+    SetPoint(layer, line, cell);
+  else
+    UnSetPoint(layer, line, cell);
+}
+
+bool CheckPoint(int layer, int line, int cell)
+{
+  return CubeBuffer[layer][line] & (1 << cell);
 }
 
 void SetPlaneX(int layer, int value)
@@ -256,6 +452,164 @@ void RainEffectWorkerClbk(bool eventExec)
   }
 }
 TimeWorker RainEffectWorker = TimeWorker(RAIN_EFFECT_DELAY, RainEffectWorkerClbk);
+
+
+Point Pongs[PONG_ELEMENT_COUNT][PONG_LAIL_LENGHT];
+Point PongDirections[PONG_ELEMENT_COUNT];
+int8_t PongTailIndexes[PONG_ELEMENT_COUNT];
+void InitPong()
+{
+  for (int i = 0; i < PONG_ELEMENT_COUNT; ++i)
+  {
+    PongTailIndexes[i] = PONG_LAIL_LENGHT - 1;
+    PongDirections[i] = { .X = 1, .Y = 1, .Z = 1 };
+  }
+}
+void PongWorkerClbk(bool eventExec)
+{
+  SetCube(0);
+  
+  for (int i = 0; i < PONG_ELEMENT_COUNT; ++i)
+  {
+    Point past = Pongs[i][0];
+    Point direction = PongDirections[i];
+
+    Pongs[i][0].X += direction.X;
+    Pongs[i][0].Y += direction.Y;
+    Pongs[i][0].Z += direction.Z;
+
+    if (PONG_LAIL_LENGHT > 1)
+    {
+      Pongs[i][PongTailIndexes[i]] = past;
+
+      PongTailIndexes[i]--;
+
+      if (PongTailIndexes[i] == 0)
+        PongTailIndexes[i] = PONG_LAIL_LENGHT - 1;
+    }
+
+    if (Pongs[i][0].X >= CUBE_DIMENSION)
+    {
+      Pongs[i][0].X = CUBE_DIMENSION - 1;
+      PongDirections[i].X = random(100) > PONG_THRESHOLD ? -direction.X : direction.X;
+    }
+    else if (Pongs[i][0].X < 0)
+    {
+      Pongs[i][0].X = 0;
+      PongDirections[i].X = random(100) > PONG_THRESHOLD ? -direction.X : direction.X;
+    }
+
+    if (Pongs[i][0].Y >= CUBE_DIMENSION)
+    {
+      Pongs[i][0].Y = CUBE_DIMENSION - 1;
+      PongDirections[i].Y = random(100) > PONG_THRESHOLD ? -direction.Y : direction.Y;
+    }
+    else if (Pongs[i][0].Y < 0)
+    {
+      Pongs[i][0].Y = 0;
+      PongDirections[i].Y = random(100) > PONG_THRESHOLD ? -direction.Y : direction.Y;
+    }
+
+    if (Pongs[i][0].Z >= CUBE_DIMENSION)
+    {
+      Pongs[i][0].Z = CUBE_DIMENSION - 1;
+      PongDirections[i].Z = random(100) > PONG_THRESHOLD ? -direction.Z : direction.Z;
+    }
+    else if (Pongs[i][0].Z < 0)
+    {
+      Pongs[i][0].Z = 0;
+      PongDirections[i].Z = random(100) > PONG_THRESHOLD ? -direction.Z : direction.Z;
+    }
+
+    for (int j = 0; j < PONG_LAIL_LENGHT; ++j)
+    {
+      SetPoint(Pongs[i][j].X, Pongs[i][j].Y, Pongs[i][j].Z);
+    }
+  }
+}
+TimeWorker PongWorker = TimeWorker(PONG_EFFECT_DELAY, PongWorkerClbk);
+
+
+int SetPoints = 0;
+bool BreathReverse = false;
+bool BreathContinueWorkerInvoked = false;
+bool BreathContinueWorkerFlag = false;
+void BreathContinueWorkerClbk(bool eventExec)
+{
+  if (eventExec)
+    return;
+
+  BreathContinueWorkerInvoked = false;
+  BreathReverse = !BreathReverse;  
+  SetPoints = 0;
+}
+TimeWorker BreathContinueWorker = TimeWorker(BREATH_END_DELAY, BreathContinueWorkerClbk, &BreathContinueWorkerFlag, false);
+void BreathWorkerClbk(bool eventExec)
+{
+  if (SetPoints == MaxCubeLenght)
+  {
+    if (!BreathContinueWorkerInvoked)
+    {
+      BreathContinueWorkerInvoked = true;
+      BreathContinueWorkerFlag = true;
+    }
+
+    BreathContinueWorker.Update();
+  }
+
+  int index = random(MaxCubeLenght);
+  Point p;
+  GetCoordinateFromIndex(index, &p.X, &p.Y, &p.Z);
+
+  if (CheckPoint(p.X, p.Y, p.Z) != BreathReverse)
+  {
+    int i = 1;
+    Point p2 = p;
+    bool validInc = (index + i) < MaxCubeLenght, validDec = (index - i) > -1; 
+    
+    if (validInc)
+      GetCoordinateFromIndex(index + i, &p.X, &p.Y, &p.Z);
+    if (validDec)
+      GetCoordinateFromIndex(index - i, &p2.X, &p2.Y, &p2.Z);
+
+    while (validInc || validDec)
+    {
+      if (validInc)
+        if (CheckPoint(p.X, p.Y, p.Z) == BreathReverse)
+          break;
+      if (validDec)
+        if (CheckPoint(p2.X, p2.Y, p2.Z) == BreathReverse)
+          break;        
+
+      if (++i > 5) break;
+
+      validInc = (index + i) < MaxCubeLenght;
+      validDec = (index - i) > -1; 
+
+      if (validInc)
+        GetCoordinateFromIndex(index + i, &p.X, &p.Y, &p.Z);
+      if (validDec)
+        GetCoordinateFromIndex(index - i, &p2.X, &p2.Y, &p2.Z);    
+    }
+      
+    if (validInc && (CheckPoint(p.X, p.Y, p.Z) == BreathReverse))
+    {
+      SetPoint(p.X, p.Y, p.Z, !BreathReverse);
+      SetPoints++;
+    }
+    else if (validDec && (CheckPoint(p2.X, p2.Y, p2.Z) == BreathReverse))
+    {
+      SetPoint(p2.X, p2.Y, p2.Z, !BreathReverse);
+      SetPoints++;
+    }
+  }
+  else
+  {
+    SetPoint(p.X, p.Y, p.Z, !BreathReverse);
+    SetPoints++;
+  }
+}
+TimeWorker BreathWorker = TimeWorker(BREATH_DELAY, BreathWorkerClbk);
 
 
 int l = 0;
@@ -398,82 +752,6 @@ void TestEffectWorkerClbk(bool eventExec)
 TimeWorker TestEffectWorker = TimeWorker(70, TestEffectWorkerClbk);
 
 
-Point Pongs[PONG_ELEMENT_COUNT][PONG_LAIL_LENGHT];
-Point PongDirections[PONG_ELEMENT_COUNT];
-int PongTailIndexes[PONG_ELEMENT_COUNT];
-void InitPong()
-{
-  for (int i = 0; i < PONG_ELEMENT_COUNT; ++i)
-  {
-    PongTailIndexes[i] = PONG_LAIL_LENGHT - 1;
-    PongDirections[i] = { .X = 1, .Y = 1, .Z = 1 };
-  }
-}
-void PongWorkerClbk(bool eventExec)
-{
-  SetCube(0);
-  
-  for (int i = 0; i < PONG_ELEMENT_COUNT; ++i)
-  {
-    Point past = Pongs[i][0];
-    Point direction = PongDirections[i];
-
-    Pongs[i][0].X += direction.X;
-    Pongs[i][0].Y += direction.Y;
-    Pongs[i][0].Z += direction.Z;
-
-    if (PONG_LAIL_LENGHT > 1)
-    {
-      Pongs[i][PongTailIndexes[i]] = past;
-
-      PongTailIndexes[i]--;
-
-      if (PongTailIndexes[i] == 0)
-        PongTailIndexes[i] = PONG_LAIL_LENGHT - 1;
-    }
-
-    if (Pongs[i][0].X >= CUBE_DIMENSION)
-    {
-      Pongs[i][0].X = CUBE_DIMENSION - 1;
-      PongDirections[i].X = random(100) > PONG_THRESHOLD ? -direction.X : direction.X;
-    }
-    else if (Pongs[i][0].X < 0)
-    {
-      Pongs[i][0].X = 0;
-      PongDirections[i].X = random(100) > PONG_THRESHOLD ? -direction.X : direction.X;
-    }
-
-    if (Pongs[i][0].Y >= CUBE_DIMENSION)
-    {
-      Pongs[i][0].Y = CUBE_DIMENSION - 1;
-      PongDirections[i].Y = random(100) > PONG_THRESHOLD ? -direction.Y : direction.Y;
-    }
-    else if (Pongs[i][0].Y < 0)
-    {
-      Pongs[i][0].Y = 0;
-      PongDirections[i].Y = random(100) > PONG_THRESHOLD ? -direction.Y : direction.Y;
-    }
-
-    if (Pongs[i][0].Z >= CUBE_DIMENSION)
-    {
-      Pongs[i][0].Z = CUBE_DIMENSION - 1;
-      PongDirections[i].Z = random(100) > PONG_THRESHOLD ? -direction.Z : direction.Z;
-    }
-    else if (Pongs[i][0].Z < 0)
-    {
-      Pongs[i][0].Z = 0;
-      PongDirections[i].Z = random(100) > PONG_THRESHOLD ? -direction.Z : direction.Z;
-    }
-
-    for (int j = 0; j < PONG_LAIL_LENGHT; ++j)
-    {
-      SetPoint(Pongs[i][j].X, Pongs[i][j].Y, Pongs[i][j].Z);
-    }
-  }
-}
-TimeWorker PongWorker = TimeWorker(PONG_EFFECT_DELAY, PongWorkerClbk);
-
-
 void CubeControllerWorkerClbk(bool eventExec)
 {
   switch (CurrentAppState)
@@ -489,6 +767,9 @@ void CubeControllerWorkerClbk(bool eventExec)
     break;
   case PongEffect:
     PongWorker.Update();
+    break;
+  case BreathEffect:
+    BreathWorker.Update();
     break;
   case TestEffect:
     TestEffectWorker.Update();
@@ -511,7 +792,7 @@ void setup()
   pinMode(CLOCK_PIN, OUTPUT);
   pinMode(LATCH_PIN, OUTPUT);
   
-  CurrentAppState = PongEffect;
+  CurrentAppState = BreathEffect;
 
   InitPong();
 
