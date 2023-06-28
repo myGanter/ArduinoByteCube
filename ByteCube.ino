@@ -12,11 +12,16 @@
 
 #define PONG_EFFECT_DELAY 40 //millis
 #define PONG_ELEMENT_COUNT 1
-#define PONG_LAIL_LENGHT 5
+#define PONG_TLAIL_LENGHT 5
 #define PONG_THRESHOLD 20 //%
 
 #define BREATH_DELAY 70 //millis
 #define BREATH_END_DELAY 1400 //millis
+
+#define FLIP_FLOP_EFFECT_DELAY 80 //millis
+
+#define STARS_EFFECT_DELAY 500 //millis
+
 
 enum AppState : int
 {
@@ -25,7 +30,16 @@ enum AppState : int
   RainEffect = 2,
   PongEffect = 3,
   BreathEffect = 4,
-  TestEffect = 5
+  FlipFlopEffect = 5,
+  StarsEffect = 6
+};
+
+enum NXYZ : int
+{
+  Ne = 0,
+  Xe = 1,
+  Ye = 2,
+  Ze = 3
 };
 
 struct Point
@@ -418,6 +432,7 @@ void Line(int x1, int y1, int z1, int x2, int y2, int z2)
 
 
 int CurrentLayerRender = 0;
+
 void CubeRenderWorkerClbk(bool eventExec)
 {
   if (CurrentLayerRender == CUBE_DIMENSION)
@@ -442,16 +457,19 @@ void CubeRenderWorkerClbk(bool eventExec)
 
   CurrentLayerRender++;  
 }
+
 TimeWorker CubeRenderWorker = TimeWorker(CUBE_RENDER_LAYER_DELAY, CubeRenderWorkerClbk, NULL, true, true);
 
 
 PointFloat Rain[RAIN_DROP_COUNT];
 float RainSpeed[RAIN_DROP_COUNT];
+
 void SetRainRandomSpeed(int i)
 {
   float newSpeed = RandomFloat(3);
   RainSpeed[i] = newSpeed < 0.4 ? 1.0 - newSpeed : newSpeed;
 }
+
 void InitRain()
 {
   for (int i = 0; i < RAIN_DROP_COUNT; ++i)
@@ -463,6 +481,7 @@ void InitRain()
     SetRainRandomSpeed(i);
   }
 }
+
 void RainEffectWorkerClbk(bool eventExec)
 {
   SetCube(0);
@@ -483,20 +502,28 @@ void RainEffectWorkerClbk(bool eventExec)
     SetPoint(Rain[i].X, Rain[i].Y, Rain[i].Z);       
   }
 }
+
 TimeWorker RainEffectWorker = TimeWorker(RAIN_EFFECT_DELAY, RainEffectWorkerClbk);
 
 
-Point Pongs[PONG_ELEMENT_COUNT][PONG_LAIL_LENGHT];
+Point Pongs[PONG_ELEMENT_COUNT][PONG_TLAIL_LENGHT];
 Point PongDirections[PONG_ELEMENT_COUNT];
 int8_t PongTailIndexes[PONG_ELEMENT_COUNT];
+
 void InitPong()
 {
   for (int i = 0; i < PONG_ELEMENT_COUNT; ++i)
   {
-    PongTailIndexes[i] = PONG_LAIL_LENGHT - 1;
+    for (int j = 0; j < PONG_TLAIL_LENGHT; ++j)
+    {
+      Pongs[i][j] = { .X = 0, .Y = 0, .Z = 0 };
+    }
+
+    PongTailIndexes[i] = PONG_TLAIL_LENGHT - 1;
     PongDirections[i] = { .X = 1, .Y = 1, .Z = 1 };
   }
 }
+
 void PongWorkerClbk(bool eventExec)
 {
   SetCube(0);
@@ -510,14 +537,14 @@ void PongWorkerClbk(bool eventExec)
     Pongs[i][0].Y += direction.Y;
     Pongs[i][0].Z += direction.Z;
 
-    if (PONG_LAIL_LENGHT > 1)
+    if (PONG_TLAIL_LENGHT > 1)
     {
       Pongs[i][PongTailIndexes[i]] = past;
 
       PongTailIndexes[i]--;
 
       if (PongTailIndexes[i] == 0)
-        PongTailIndexes[i] = PONG_LAIL_LENGHT - 1;
+        PongTailIndexes[i] = PONG_TLAIL_LENGHT - 1;
     }
 
     if (Pongs[i][0].X >= CUBE_DIMENSION)
@@ -553,12 +580,13 @@ void PongWorkerClbk(bool eventExec)
       PongDirections[i].Z = random(100) > PONG_THRESHOLD ? -direction.Z : direction.Z;
     }
 
-    for (int j = 0; j < PONG_LAIL_LENGHT; ++j)
+    for (int j = 0; j < PONG_TLAIL_LENGHT; ++j)
     {
       SetPoint(Pongs[i][j].X, Pongs[i][j].Y, Pongs[i][j].Z);
     }
   }
 }
+
 TimeWorker PongWorker = TimeWorker(PONG_EFFECT_DELAY, PongWorkerClbk);
 
 
@@ -566,6 +594,16 @@ int SetPoints = 0;
 bool BreathReverse = false;
 bool BreathContinueWorkerInvoked = false;
 bool BreathContinueWorkerFlag = false;
+
+void InitBreath()
+{
+  SetCube(0);
+  SetPoints = 0;
+  BreathReverse = false;
+  BreathContinueWorkerInvoked = false;
+  BreathContinueWorkerFlag = false;
+}
+
 void BreathContinueWorkerClbk(bool eventExec)
 {
   if (eventExec)
@@ -575,7 +613,9 @@ void BreathContinueWorkerClbk(bool eventExec)
   BreathReverse = !BreathReverse;  
   SetPoints = 0;
 }
+
 TimeWorker BreathContinueWorker = TimeWorker(BREATH_END_DELAY, BreathContinueWorkerClbk, &BreathContinueWorkerFlag, false);
+
 void BreathWorkerClbk(bool eventExec)
 {
   if (SetPoints == MaxCubeLenght)
@@ -641,147 +681,263 @@ void BreathWorkerClbk(bool eventExec)
     SetPoints++;
   }
 }
+
 TimeWorker BreathWorker = TimeWorker(BREATH_DELAY, BreathWorkerClbk);
 
 
-int l = 0;
-int r = 0;
-int c = 0;
-int state = 0;
-bool ss = false;
-int f = 0;
-int fkey = false;
-void TestEffectWorkerClbk(bool eventExec)
+Point ParentLine[2];
+Point ChildLine[2];
+Point DynamicChildLine[2];
+NXYZ FirstStap;
+int FirstStapValue;
+NXYZ SecondStap;
+int SecondStapValue;
+
+void InitFlipFlop()
 {
-  //200
-  /*SetCube(0);
-  SetPlaneX(f, 255);
-  SetPalneY(f, 255);
-  SetPlaneZ(f, 255);
-  f += fkey ? -1 : 1;
-  if (f == CUBE_DIMENSION - 1 || f == 0)
-    fkey = !fkey;*/
+  ParentLine[0] = { .X = 0, .Y = 0, .Z = 0 };
+  ParentLine[1] = { .X = 0, .Y = 0, .Z = CUBE_DIMENSION - 1 };
 
+  ChildLine[0] = { .X = 0, .Y = CUBE_DIMENSION - 1, .Z = 0 };
+  ChildLine[1] = { .X = 0, .Y = CUBE_DIMENSION - 1, .Z = CUBE_DIMENSION - 1 };
 
-  //1000
-  /*SetCube(0);
-  if (ss)
+  DynamicChildLine[0] = ChildLine[0];
+  DynamicChildLine[1] = ChildLine[1];
+
+  FirstStap = Xe;
+  FirstStapValue = 1;
+  SecondStap = Ye;
+  SecondStapValue = -1;
+}
+
+int SearchIndexChildPoint(Point *parentP)
+{
+  int resEq = 0;
+
+  if (ChildLine[0].X == parentP->X)
+    resEq++;
+  if (ChildLine[0].Y == parentP->Y)
+    resEq++;
+  if (ChildLine[0].Z == parentP->Z)
+    resEq++;
+
+  return resEq >= 2 ? 0 : 1;
+}
+
+NXYZ GetPlaneDifference(Point *p1, Point *p2)
+{
+  if (p1->X != p2->X)
+    return Xe;  
+  if (p1->Y != p2->Y)
+    return Ye;  
+  if (p1->Z != p2->Z)
+    return Ze;
+
+  return Ne;
+}
+
+int GetPlaneDifferenceValue(Point *p1, Point *p2, int planeDiff)
+{
+  switch (planeDiff)
   {
-    for (int i = 0; i < CUBE_DIMENSION; ++i)
+    case Xe:
+      return (p2->X - p1->X) > 0 ? 1 : -1;  
+    case Ye:
+      return (p2->Y - p1->Y) > 0 ? 1 : -1;
+    case Ze:
+      return (p2->Z - p1->Z) > 0 ? 1 : -1;
+    default:
+      return 0;
+  }
+}
+
+void InitStaps()
+{
+  int rndIndex = random(2);
+  Point parent1 = ParentLine[rndIndex];
+  Point parent2 = DynamicChildLine[SearchIndexChildPoint(&parent1)];
+  Point child1 = ParentLine[rndIndex == 0 ? 1 : 0];
+  Point child2 = DynamicChildLine[SearchIndexChildPoint(&child1)];
+
+  ParentLine[0] = parent1;
+  ParentLine[1] = parent2;
+  ChildLine[0] = child1;
+  ChildLine[1] = child2;
+  DynamicChildLine[0] = child1;
+  DynamicChildLine[1] = child2; 
+
+  NXYZ parentDiff = GetPlaneDifference(&ParentLine[0], &ParentLine[1]);
+  
+  switch (parentDiff)
+  {
+    case Xe:
+      if (parent1.Y == child1.Y)
+      {
+        FirstStap = Ye;
+        SecondStap = Ze;
+
+        FirstStapValue = parent1.Y == 0 ? 1 : -1;
+        SecondStapValue = child1.Z == 0 ? 1 : -1;
+      }
+      else
+      {
+        FirstStap = Ze;
+        SecondStap = Ye;
+
+        FirstStapValue = parent1.Z == 0 ? 1 : -1;
+        SecondStapValue = child1.Y == 0 ? 1 : -1;
+      }
+      break;
+    case Ye:
+      if (parent1.X == child1.X)
+      {
+        FirstStap = Xe;
+        SecondStap = Ze;
+
+        FirstStapValue = parent1.X == 0 ? 1 : -1;
+        SecondStapValue = child1.Z == 0 ? 1 : -1;
+      }
+      else
+      {
+        FirstStap = Ze;
+        SecondStap = Xe;
+
+        FirstStapValue = parent1.Z == 0 ? 1 : -1;
+        SecondStapValue = child1.X == 0 ? 1 : -1;
+      }
+      break;
+    case Ze:
+      if (parent1.X == child1.X)
+      {
+        FirstStap = Xe;
+        SecondStap = Ye;
+
+        FirstStapValue = parent1.X == 0 ? 1 : -1;
+        SecondStapValue = child1.Y == 0 ? 1 : -1;
+      }
+      else
+      {
+        FirstStap = Ye;
+        SecondStap = Xe;
+
+        FirstStapValue = parent1.Y == 0 ? 1 : -1;
+        SecondStapValue = child1.X == 0 ? 1 : -1;
+      }
+      break;  
+  }  
+}
+
+void DrawLines()
+{
+  Point start = ParentLine[0];
+  Point end = DynamicChildLine[SearchIndexChildPoint(&start)];
+  NXYZ planeDiff = GetPlaneDifference(&ParentLine[0], &ParentLine[1]);
+  int planeDiffValue = GetPlaneDifferenceValue(&ParentLine[0], &ParentLine[1], planeDiff);
+
+  for (int i = 0; i < CUBE_DIMENSION; ++i)
+  {
+    Line(start.X, start.Y, start.Z, end.X, end.Y, end.Z);
+
+    switch (planeDiff)
     {
-      SetPoint(0, i, 0);
-      SetPoint(0, i, CUBE_DIMENSION - 1);
-      SetPoint(0, 0, i);
-      SetPoint(0, CUBE_DIMENSION - 1, i);
-
-      SetPoint(CUBE_DIMENSION - 1, i, 0);
-      SetPoint(CUBE_DIMENSION - 1, i, CUBE_DIMENSION - 1);
-      SetPoint(CUBE_DIMENSION - 1, 0, i);
-      SetPoint(CUBE_DIMENSION - 1, CUBE_DIMENSION - 1, i);
-
-      SetPoint(i, 0, 0);
-      SetPoint(i, CUBE_DIMENSION - 1, 0);
-      SetPoint(i, 0, CUBE_DIMENSION - 1);
-      SetPoint(i, CUBE_DIMENSION - 1, CUBE_DIMENSION - 1);
+      case Xe:
+        start.X += planeDiffValue;
+        end.X += planeDiffValue;
+        break;    
+      case Ye:
+        start.Y += planeDiffValue;
+        end.Y += planeDiffValue;
+        break;
+      case Ze:
+        start.Z += planeDiffValue;
+        end.Z += planeDiffValue;
+        break;
     }
+  }
+}
+
+void FlipFlopClbk(bool eventExec)
+{
+  SetCube(0);
+
+  DrawLines();
+
+  int8_t *firstStapField0;
+  int8_t *firstStapField1;
+  switch (FirstStap)
+  {
+    case Xe:
+      firstStapField0 = &DynamicChildLine[0].X;
+      firstStapField1 = &DynamicChildLine[1].X;
+      break;
+    case Ye:
+      firstStapField0 = &DynamicChildLine[0].Y;
+      firstStapField1 = &DynamicChildLine[1].Y;
+      break;
+    case Ze:
+      firstStapField0 = &DynamicChildLine[0].Z;
+      firstStapField1 = &DynamicChildLine[1].Z;
+      break;  
+  }
+
+  bool isNextStap = FirstStapValue > 0 ? (*firstStapField0) == CUBE_DIMENSION - 1 : (*firstStapField0) == 0;
+
+  if (isNextStap)
+  {
+    int8_t *secondStapField0;
+    int8_t *secondStapField1;
+    switch (SecondStap)
+    {
+      case Xe:
+        secondStapField0 = &DynamicChildLine[0].X;
+        secondStapField1 = &DynamicChildLine[1].X;
+        break;
+      case Ye:
+        secondStapField0 = &DynamicChildLine[0].Y;
+        secondStapField1 = &DynamicChildLine[1].Y;
+        break;
+      case Ze:
+        secondStapField0 = &DynamicChildLine[0].Z;
+        secondStapField1 = &DynamicChildLine[1].Z;
+        break;  
+    }
+
+    isNextStap = SecondStapValue > 0 ? (*secondStapField0) == CUBE_DIMENSION - 1 : (*secondStapField0) == 0;
+
+    if (isNextStap)
+    {
+      InitStaps();
+    }
+    else
+    {
+      *secondStapField0 += SecondStapValue;
+      *secondStapField1 += SecondStapValue;
+    }    
   }
   else
   {
-    SetCube(255);  
-  }
-  ss = !ss;*/
-
-
-  //500
-  /*SetCube(0); 
-  SetPoint(l, r, c);
-  c++;
-  if (c >= CUBE_DIMENSION)
-  {
-    r++;
-    c = 0;
-  }
-  if (r >= CUBE_DIMENSION)
-  {
-    l++;
-    r = 0;
-  }
-  if (l >= CUBE_DIMENSION)
-  {
-    l = 0;
-    r = 0;
-    c = 0;
-  }*/
-
-
-  //1000
-  /*SetCube(0);
-  if (state == 0)
-  {
-    for (int i = 0; i < CUBE_DIMENSION; ++i)
-    {
-      for (int j = 0; j < CUBE_DIMENSION; ++j)
-      {
-        SetPoint(0, i, j);        
-      }
-    }      
-  }
-  else if (state == 1)
-  {
-    for (int i = 0; i < CUBE_DIMENSION; ++i)
-    {
-      for (int j = 0; j < CUBE_DIMENSION; ++j)
-      {
-        SetPoint(i, CUBE_DIMENSION - 1, j);        
-      }
-    }         
-  }
-  else if (state == 2)
-  {
-    for (int i = 0; i < CUBE_DIMENSION; ++i)
-    {
-      for (int j = 0; j < CUBE_DIMENSION; ++j)
-      {
-        SetPoint(i, j, 0);        
-      }
-    } 
-  }
-  else if (state == 3)
-  {
-    for (int i = 0; i < CUBE_DIMENSION; ++i)
-    {
-      for (int j = 0; j < CUBE_DIMENSION; ++j)
-      {
-        SetPoint(i, 0, j);        
-      }
-    }         
-  }
-  else if (state == 4)
-  {
-    for (int i = 0; i < CUBE_DIMENSION; ++i)
-    {
-      for (int j = 0; j < CUBE_DIMENSION; ++j)
-      {
-        SetPoint(CUBE_DIMENSION - 1, i, j);        
-      }
-    } 
-  }
-  else if (state == 5)     
-  {
-    for (int i = 0; i < CUBE_DIMENSION; ++i)
-    {
-      for (int j = 0; j < CUBE_DIMENSION; ++j)
-      {
-        SetPoint(i, j, CUBE_DIMENSION - 1);        
-      }
-    } 
-  }
-
-  state++;   
-  if (state == 6)
-    state = 0;*/
+    *firstStapField0 += FirstStapValue;
+    *firstStapField1 += FirstStapValue;
+  }  
 }
-TimeWorker TestEffectWorker = TimeWorker(70, TestEffectWorkerClbk);
+
+TimeWorker FlipFlopWorker = TimeWorker(FLIP_FLOP_EFFECT_DELAY, FlipFlopClbk);
+
+
+void InitStars()
+{
+  SetCube(0);
+}
+
+void StarsWorkerClbk(bool eventExec)
+{
+  if (random(100) > 50)
+    SetPoint(random(CUBE_DIMENSION), random(CUBE_DIMENSION), random(CUBE_DIMENSION));
+  else
+    UnSetPoint(random(CUBE_DIMENSION), random(CUBE_DIMENSION), random(CUBE_DIMENSION));
+}
+
+TimeWorker StarsWorker = TimeWorker(STARS_EFFECT_DELAY, StarsWorkerClbk);
 
 
 void CubeControllerWorkerClbk(bool eventExec)
@@ -803,14 +959,18 @@ void CubeControllerWorkerClbk(bool eventExec)
   case BreathEffect:
     BreathWorker.Update();
     break;
-  case TestEffect:
-    TestEffectWorker.Update();
+  case FlipFlopEffect:
+    FlipFlopWorker.Update();
+    break;
+  case StarsEffect:
+    StarsWorker.Update();
     break;
   default:
     SetCube(0);
     break;
   }
 }
+
 TimeWorker CubeControllerWorker = TimeWorker(CUBE_CONTROLLER_DELAY, CubeControllerWorkerClbk);
 
 
@@ -824,28 +984,17 @@ void setup()
   pinMode(CLOCK_PIN, OUTPUT);
   pinMode(LATCH_PIN, OUTPUT);
   
-  CurrentAppState = RainEffect;
+  CurrentAppState = FlipFlopEffect;
 
   InitPong();
   InitRain();
+  InitStars();
+  InitBreath();
+  InitFlipFlop();
 }
 
 void loop() 
 {
   CubeControllerWorker.Update();
   CubeRenderWorker.Update();
-  
-  /*for (int i = 0; i < CUBE_DIMENSION; ++i)
-  {
-    for (int j = 0; j < CUBE_DIMENSION; ++j)
-    {
-      Serial.print(CubeBuffer[i][j]);
-      Serial.print(" ");
-    }
-
-    Serial.println();
-  }
-
-  Serial.println();
-  //delay(1000);*/
 }
