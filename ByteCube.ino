@@ -22,6 +22,10 @@
 
 #define STARS_EFFECT_DELAY 500 //millis
 
+#define START_LAYER_EFFECT_DELAY 600 //millis
+#define LAYER_FORCE_DELAY 300 //millis
+#define LAYER_SPEED_FORCE 30
+
 
 enum AppState : int
 {
@@ -31,7 +35,8 @@ enum AppState : int
   PongEffect = 3,
   BreathEffect = 4,
   FlipFlopEffect = 5,
-  StarsEffect = 6
+  StarsEffect = 6,
+  LayerEffect = 7
 };
 
 enum NXYZ : int
@@ -171,6 +176,11 @@ class TimeWorker
     void SetOnlyEventInvoked(bool value)
     {
       _onlyEventInvoked = value;
+    }
+
+    void SetDelay(unsigned short value)
+    {
+      _delay = value;
     }
 };
 //-------------------- end time worker
@@ -385,7 +395,7 @@ void SetPlaneX(int layer, int value)
   }
 }
 
-void SetPalneY(int line, int value)
+void SetPlaneY(int line, int value)
 {
   for (int layer = 0; layer < CUBE_DIMENSION; ++layer)
   {
@@ -940,34 +950,110 @@ void StarsWorkerClbk(bool eventExec)
 TimeWorker StarsWorker = TimeWorker(STARS_EFFECT_DELAY, StarsWorkerClbk);
 
 
+NXYZ Layer = Ye;
+int LayerIndex = 0;
+int LayerSpeed = START_LAYER_EFFECT_DELAY;
+int LayerSpeedForce = -LAYER_SPEED_FORCE;
+
+void InitLayer()
+{
+  Layer = Ye;
+  LayerIndex = 0;
+  LayerSpeed = START_LAYER_EFFECT_DELAY;
+  LayerSpeedForce = -LAYER_SPEED_FORCE;
+}
+
+void LayerWorkerClbk(bool eventExec)
+{
+  SetCube(0);
+
+  switch (Layer)
+  {
+    case Xe:
+      SetPlaneX(LayerIndex, 255);
+      break;
+    case Ye:
+      SetPlaneY(LayerIndex, 255);
+      break;
+    case Ze:
+      SetPlaneZ(LayerIndex, 255);
+      break;
+  }
+
+  LayerIndex++;
+  LayerIndex %= CUBE_DIMENSION;
+}
+
+TimeWorker LayerWorker = TimeWorker(START_LAYER_EFFECT_DELAY, LayerWorkerClbk);
+
+void LayerForceWorkerClbk(bool eventExec)
+{
+  LayerSpeed += LayerSpeedForce;
+
+  if (LayerSpeed <= abs(LayerSpeedForce))
+  {
+    LayerSpeed = abs(LayerSpeedForce);
+    LayerSpeedForce = -LayerSpeedForce;
+  }
+  else if (LayerSpeed >= START_LAYER_EFFECT_DELAY)
+  {
+    LayerSpeed = START_LAYER_EFFECT_DELAY;
+    LayerSpeedForce = -LayerSpeedForce;
+
+    switch (Layer)
+    {
+      case Xe:
+        Layer = Ye;
+        break;
+      case Ye:
+        Layer = Ze;
+        break;
+      case Ze:
+        Layer = Xe;
+        break;
+    }
+
+    LayerIndex = 0;
+  }
+
+  LayerWorker.SetDelay(LayerSpeed);
+}
+
+TimeWorker LayerForceWorker = TimeWorker(LAYER_FORCE_DELAY, LayerForceWorkerClbk);
+
+
 void CubeControllerWorkerClbk(bool eventExec)
 {
   switch (CurrentAppState)
   {
-  case FullMatrixOff:
-    SetCube(0);
-    break;
-  case FullMatrixOn:
-    SetCube(255);
-    break;
-  case RainEffect:
-    RainEffectWorker.Update();
-    break;
-  case PongEffect:
-    PongWorker.Update();
-    break;
-  case BreathEffect:
-    BreathWorker.Update();
-    break;
-  case FlipFlopEffect:
-    FlipFlopWorker.Update();
-    break;
-  case StarsEffect:
-    StarsWorker.Update();
-    break;
-  default:
-    SetCube(0);
-    break;
+    case FullMatrixOff:
+      SetCube(0);
+      break;
+    case FullMatrixOn:
+      SetCube(255);
+      break;
+    case RainEffect:
+      RainEffectWorker.Update();
+      break;
+    case PongEffect:
+      PongWorker.Update();
+      break;
+    case BreathEffect:
+      BreathWorker.Update();
+      break;
+    case FlipFlopEffect:
+      FlipFlopWorker.Update();
+      break;
+    case StarsEffect:
+      StarsWorker.Update();
+      break;
+    case LayerEffect:
+      LayerWorker.Update();
+      LayerForceWorker.Update();
+      break;
+    default:
+      SetCube(0);
+      break;
   }
 }
 
@@ -984,10 +1070,11 @@ void setup()
   pinMode(CLOCK_PIN, OUTPUT);
   pinMode(LATCH_PIN, OUTPUT);
   
-  CurrentAppState = FlipFlopEffect;
+  CurrentAppState = LayerEffect;
 
   InitPong();
   InitRain();
+  InitLayer();
   InitStars();
   InitBreath();
   InitFlipFlop();
