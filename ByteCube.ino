@@ -26,6 +26,8 @@
 #define LAYER_FORCE_DELAY 300 //millis
 #define LAYER_SPEED_FORCE 30
 
+#define CUBE_EFFECT_DELAY 400 //millis
+
 
 enum AppState : int
 {
@@ -36,7 +38,8 @@ enum AppState : int
   BreathEffect = 4,
   FlipFlopEffect = 5,
   StarsEffect = 6,
-  LayerEffect = 7
+  LayerEffect = 7,
+  CubeEffect = 8
 };
 
 enum NXYZ : int
@@ -417,6 +420,33 @@ void SetPlaneZ(int cell, int value)
     for (int line = 0; line < CUBE_DIMENSION; ++line)
     {
       CubeBuffer[layer][line] |= 1 << cell;
+    }
+  }
+}
+
+void UnSetPlaneX(int layer)
+{
+  for (int line = 0; line < CUBE_DIMENSION; ++line)
+  {
+    CubeBuffer[layer][line] = 0;
+  }
+}
+
+void UnSetPlaneY(int line)
+{
+  for (int layer = 0; layer < CUBE_DIMENSION; ++layer)
+  {
+    CubeBuffer[layer][line] = 0;
+  }
+}
+
+void UnSetPlaneZ(int cell)
+{
+  for (int layer = 0; layer < CUBE_DIMENSION; ++layer)
+  {    
+    for (int line = 0; line < CUBE_DIMENSION; ++line)
+    {
+      CubeBuffer[layer][line] &= ~(1 << cell);
     }
   }
 }
@@ -1022,6 +1052,45 @@ void LayerForceWorkerClbk(bool eventExec)
 TimeWorker LayerForceWorker = TimeWorker(LAYER_FORCE_DELAY, LayerForceWorkerClbk);
 
 
+int CubeRadius = 0;
+int CubeRadiusCounter = 1;
+
+void InitCubeEffect()
+{
+  CubeRadius = 0;
+  CubeRadiusCounter = 1;  
+}
+
+void CubeEffectWorkerClbk(bool eventExec)
+{
+  SetCube(255);
+
+  for (int i = 0; i < CubeRadius; ++i)
+  {
+    UnSetPlaneX(i);
+    UnSetPlaneX(CUBE_DIMENSION - 1 - i);
+    UnSetPlaneY(i);
+    UnSetPlaneY(CUBE_DIMENSION - 1 - i);
+    UnSetPlaneZ(i);
+    UnSetPlaneZ(CUBE_DIMENSION - 1 - i);
+  }  
+
+  CubeRadius += CubeRadiusCounter;
+
+  if (CubeRadius == round(CUBE_DIMENSION / 2.0))
+  {
+    CubeRadiusCounter = -CubeRadiusCounter;
+    CubeRadius--;
+  }
+  else if (CubeRadius == -1)
+  {
+    CubeRadiusCounter = -CubeRadiusCounter;
+    CubeRadius++;
+  }
+}
+TimeWorker CubeEffectWorker = TimeWorker(CUBE_EFFECT_DELAY, CubeEffectWorkerClbk);
+
+
 void CubeControllerWorkerClbk(bool eventExec)
 {
   switch (CurrentAppState)
@@ -1051,6 +1120,9 @@ void CubeControllerWorkerClbk(bool eventExec)
       LayerWorker.Update();
       LayerForceWorker.Update();
       break;
+    case CubeEffect:
+      CubeEffectWorker.Update();
+      break;
     default:
       SetCube(0);
       break;
@@ -1070,7 +1142,7 @@ void setup()
   pinMode(CLOCK_PIN, OUTPUT);
   pinMode(LATCH_PIN, OUTPUT);
   
-  CurrentAppState = LayerEffect;
+  CurrentAppState = StarsEffect;
 
   InitPong();
   InitRain();
@@ -1078,6 +1150,7 @@ void setup()
   InitStars();
   InitBreath();
   InitFlipFlop();
+  InitCubeEffect();
 }
 
 void loop() 
