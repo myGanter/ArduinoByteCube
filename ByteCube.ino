@@ -28,6 +28,9 @@
 
 #define CUBE_EFFECT_DELAY 400 //millis
 
+#define TEXT_EFFECT_DELAY 150 //millis
+#define TEXT_ASCII_START_INDEX 65
+
 
 enum AppState : int
 {
@@ -39,7 +42,8 @@ enum AppState : int
   FlipFlopEffect = 5,
   StarsEffect = 6,
   LayerEffect = 7,
-  CubeEffect = 8
+  CubeEffect = 8,
+  TextEffect = 9
 };
 
 enum NXYZ : int
@@ -63,6 +67,13 @@ struct PointFloat
   float Y;
   float Z;
 };
+
+struct Point2D
+{
+  int8_t X;
+  int8_t Y;
+};
+
 
 
 const int MaxCubeLenght2 = CUBE_DIMENSION * CUBE_DIMENSION;
@@ -1091,6 +1102,446 @@ void CubeEffectWorkerClbk(bool eventExec)
 TimeWorker CubeEffectWorker = TimeWorker(CUBE_EFFECT_DELAY, CubeEffectWorkerClbk);
 
 
+const Point2D CharA[10] PROGMEM = 
+{
+	{ .X = 127, .Y = 127 },
+	{ .X = 95, .Y = 95 },
+	{ .X = 95, .Y = 95 },
+	{ .X = 64, .Y = 0 },
+	{ .X = 0, .Y = 127 },
+	{ .X = 32, .Y = 95 },
+	{ .X = 32, .Y = 95 },
+	{ .X = 64, .Y = 0 },
+	{ .X = 95, .Y = 95 },
+	{ .X = 32, .Y = 95 },
+};
+
+const Point2D CharB[18] PROGMEM = 
+{
+	{ .X = 127, .Y = 127 },
+	{ .X = 127, .Y = 0 },
+	{ .X = 127, .Y = 0 },
+	{ .X = 32, .Y = 0 },
+	{ .X = 32, .Y = 0 },
+	{ .X = 0, .Y = 32 },
+	{ .X = 0, .Y = 32 },
+	{ .X = 32, .Y = 64 },
+	{ .X = 32, .Y = 64 },
+	{ .X = 127, .Y = 64 },
+	{ .X = 32, .Y = 64 },
+	{ .X = 0, .Y = 95 },
+	{ .X = 0, .Y = 95 },
+	{ .X = 32, .Y = 127 },
+	{ .X = 32, .Y = 127 },
+	{ .X = 127, .Y = 127 },
+	{ .X = 95, .Y = 127 },
+	{ .X = 95, .Y = 0 },
+};
+
+const Point2D CharC[14] PROGMEM = 
+{
+	{ .X = 0, .Y = 127 },
+	{ .X = 95, .Y = 127 },
+	{ .X = 95, .Y = 127 },
+	{ .X = 127, .Y = 95 },
+	{ .X = 127, .Y = 95 },
+	{ .X = 127, .Y = 32 },
+	{ .X = 127, .Y = 32 },
+	{ .X = 95, .Y = 0 },
+	{ .X = 95, .Y = 0 },
+	{ .X = 0, .Y = 0 },
+	{ .X = 95, .Y = 32 },
+	{ .X = 95, .Y = 32 },
+	{ .X = 95, .Y = 95 },
+	{ .X = 95, .Y = 95 },
+};
+
+const Point2D CharD[14] PROGMEM = 
+{
+	{ .X = 127, .Y = 127 },
+	{ .X = 127, .Y = 0 },
+	{ .X = 95, .Y = 0 },
+	{ .X = 95, .Y = 127 },
+	{ .X = 95, .Y = 127 },
+	{ .X = 32, .Y = 127 },
+	{ .X = 32, .Y = 127 },
+	{ .X = 0, .Y = 95 },
+	{ .X = 0, .Y = 95 },
+	{ .X = 0, .Y = 32 },
+	{ .X = 0, .Y = 32 },
+	{ .X = 32, .Y = 0 },
+	{ .X = 32, .Y = 0 },
+	{ .X = 127, .Y = 0 },
+};
+
+const Point2D CharE[10] PROGMEM = 
+{
+	{ .X = 127, .Y = 127 },
+	{ .X = 127, .Y = 0 },
+	{ .X = 95, .Y = 0 },
+	{ .X = 95, .Y = 127 },
+	{ .X = 127, .Y = 127 },
+	{ .X = 0, .Y = 127 },
+	{ .X = 127, .Y = 0 },
+	{ .X = 0, .Y = 0 },
+	{ .X = 127, .Y = 64 },
+	{ .X = 0, .Y = 64 },
+};
+
+const Point2D CharF[6] PROGMEM = 
+{
+	{ .X = 127, .Y = 127 },
+	{ .X = 127, .Y = 0 },
+	{ .X = 127, .Y = 0 },
+	{ .X = 0, .Y = 0 },
+	{ .X = 127, .Y = 64 },
+	{ .X = 32, .Y = 64 },
+};
+
+const Point2D CharG[10] PROGMEM = 
+{
+	{ .X = 127, .Y = 127 },
+	{ .X = 127, .Y = 0 },
+	{ .X = 127, .Y = 0 },
+	{ .X = 32, .Y = 0 },
+	{ .X = 127, .Y = 127 },
+	{ .X = 32, .Y = 127 },
+	{ .X = 0, .Y = 95 },
+	{ .X = 0, .Y = 95 },
+	{ .X = 32, .Y = 64 },
+	{ .X = 64, .Y = 64 },
+};
+
+const Point2D CharH[6] PROGMEM = 
+{
+	{ .X = 0, .Y = 0 },
+	{ .X = 0, .Y = 127 },
+	{ .X = 127, .Y = 0 },
+	{ .X = 127, .Y = 127 },
+	{ .X = 127, .Y = 64 },
+	{ .X = 0, .Y = 64 },
+};
+
+const Point2D CharI[8] PROGMEM = 
+{
+	{ .X = 64, .Y = 0 },
+	{ .X = 64, .Y = 127 },
+	{ .X = 64, .Y = 0 },
+	{ .X = 64, .Y = 127 },
+	{ .X = 95, .Y = 0 },
+	{ .X = 32, .Y = 0 },
+	{ .X = 95, .Y = 127 },
+	{ .X = 32, .Y = 127 },
+};
+
+const Point2D CharJ[6] PROGMEM = 
+{
+	{ .X = 32, .Y = 0 },
+	{ .X = 32, .Y = 127 },
+	{ .X = 64, .Y = 127 },
+	{ .X = 95, .Y = 95 },
+	{ .X = 32, .Y = 0 },
+	{ .X = 64, .Y = 0 },
+};
+
+const Point2D CharK[6] PROGMEM = 
+{
+	{ .X = 127, .Y = 0 },
+	{ .X = 127, .Y = 127 },
+	{ .X = 127, .Y = 64 },
+	{ .X = 0, .Y = 0 },
+	{ .X = 127, .Y = 64 },
+	{ .X = 0, .Y = 127 },
+};
+
+const Point2D CharL[6] PROGMEM = 
+{
+	{ .X = 127, .Y = 0 },
+	{ .X = 127, .Y = 127 },
+	{ .X = 127, .Y = 127 },
+	{ .X = 32, .Y = 127 },
+	{ .X = 32, .Y = 127 },
+	{ .X = 32, .Y = 95 },
+};
+
+const Point2D CharM[8] PROGMEM = 
+{
+	{ .X = 64, .Y = 64 },
+	{ .X = 127, .Y = 0 },
+	{ .X = 64, .Y = 64 },
+	{ .X = 0, .Y = 0 },
+	{ .X = 0, .Y = 127 },
+	{ .X = 0, .Y = 0 },
+	{ .X = 127, .Y = 127 },
+	{ .X = 127, .Y = 0 },
+};
+
+const Point2D CharN[6] PROGMEM = 
+{
+	{ .X = 127, .Y = 127 },
+	{ .X = 127, .Y = 0 },
+	{ .X = 0, .Y = 127 },
+	{ .X = 0, .Y = 0 },
+	{ .X = 0, .Y = 127 },
+	{ .X = 127, .Y = 0 },
+};
+
+const Point2D CharO[8] PROGMEM = 
+{
+	{ .X = 127, .Y = 32 },
+	{ .X = 127, .Y = 95 },
+	{ .X = 95, .Y = 127 },
+	{ .X = 32, .Y = 127 },
+	{ .X = 0, .Y = 95 },
+	{ .X = 0, .Y = 32 },
+	{ .X = 32, .Y = 0 },
+	{ .X = 95, .Y = 0 },
+};
+
+const Point2D CharP[8] PROGMEM = 
+{
+	{ .X = 127, .Y = 127 },
+	{ .X = 127, .Y = 32 },
+	{ .X = 95, .Y = 0 },
+	{ .X = 32, .Y = 0 },
+	{ .X = 0, .Y = 32 },
+	{ .X = 0, .Y = 64 },
+	{ .X = 32, .Y = 95 },
+	{ .X = 127, .Y = 95 },
+};
+
+const Point2D CharQ[10] PROGMEM = 
+{
+	{ .X = 127, .Y = 32 },
+	{ .X = 127, .Y = 95 },
+	{ .X = 95, .Y = 127 },
+	{ .X = 32, .Y = 127 },
+	{ .X = 32, .Y = 95 },
+	{ .X = 32, .Y = 32 },
+	{ .X = 32, .Y = 0 },
+	{ .X = 95, .Y = 0 },
+	{ .X = 64, .Y = 95 },
+	{ .X = 0, .Y = 127 },
+};
+
+const Point2D CharR[10] PROGMEM = 
+{
+	{ .X = 127, .Y = 127 },
+	{ .X = 127, .Y = 0 },
+	{ .X = 127, .Y = 0 },
+	{ .X = 32, .Y = 0 },
+	{ .X = 32, .Y = 0 },
+	{ .X = 32, .Y = 64 },
+	{ .X = 32, .Y = 64 },
+	{ .X = 127, .Y = 64 },
+	{ .X = 95, .Y = 64 },
+	{ .X = 32, .Y = 127 },
+};
+
+const Point2D CharS[14] PROGMEM = 
+{
+	{ .X = 0, .Y = 0 },
+	{ .X = 95, .Y = 0 },
+	{ .X = 95, .Y = 0 },
+	{ .X = 127, .Y = 32 },
+	{ .X = 127, .Y = 32 },
+	{ .X = 95, .Y = 64 },
+	{ .X = 95, .Y = 64 },
+	{ .X = 32, .Y = 64 },
+	{ .X = 32, .Y = 64 },
+	{ .X = 0, .Y = 95 },
+	{ .X = 0, .Y = 95 },
+	{ .X = 32, .Y = 127 },
+	{ .X = 32, .Y = 127 },
+	{ .X = 127, .Y = 127 },
+};
+
+const Point2D CharT[6] PROGMEM = 
+{
+	{ .X = 64, .Y = 127 },
+	{ .X = 64, .Y = 0 },
+	{ .X = 64, .Y = 127 },
+	{ .X = 64, .Y = 0 },
+	{ .X = 127, .Y = 0 },
+	{ .X = 0, .Y = 0 },
+};
+
+const Point2D CharU[6] PROGMEM = 
+{
+	{ .X = 127, .Y = 0 },
+	{ .X = 127, .Y = 95 },
+	{ .X = 95, .Y = 127 },
+	{ .X = 32, .Y = 127 },
+	{ .X = 0, .Y = 95 },
+	{ .X = 0, .Y = 0 },
+};
+
+const Point2D CharV[4] PROGMEM = 
+{
+	{ .X = 127, .Y = 0 },
+	{ .X = 64, .Y = 127 },
+	{ .X = 0, .Y = 0 },
+	{ .X = 64, .Y = 127 },
+};
+
+const Point2D CharW[8] PROGMEM = 
+{
+	{ .X = 127, .Y = 0 },
+	{ .X = 95, .Y = 127 },
+	{ .X = 95, .Y = 127 },
+	{ .X = 64, .Y = 64 },
+	{ .X = 0, .Y = 0 },
+	{ .X = 32, .Y = 127 },
+	{ .X = 32, .Y = 127 },
+	{ .X = 64, .Y = 64 },
+};
+
+const Point2D CharX[4] PROGMEM = 
+{
+	{ .X = 127, .Y = 0 },
+	{ .X = 0, .Y = 127 },
+	{ .X = 0, .Y = 0 },
+	{ .X = 127, .Y = 127 },
+};
+
+const Point2D CharY[8] PROGMEM = 
+{
+	{ .X = 64, .Y = 127 },
+	{ .X = 64, .Y = 64 },
+	{ .X = 64, .Y = 127 },
+	{ .X = 64, .Y = 64 },
+	{ .X = 64, .Y = 64 },
+	{ .X = 0, .Y = 0 },
+	{ .X = 64, .Y = 64 },
+	{ .X = 127, .Y = 0 },
+};
+
+const Point2D CharZ[6] PROGMEM = 
+{
+	{ .X = 127, .Y = 0 },
+	{ .X = 0, .Y = 0 },
+	{ .X = 0, .Y = 0 },
+	{ .X = 127, .Y = 127 },
+	{ .X = 127, .Y = 127 },
+	{ .X = 0, .Y = 127 },
+};
+
+const Point2D *Chars[26] = 
+{
+  CharA,
+  CharB,
+  CharC,
+  CharD,
+  CharE,
+  CharF,
+  CharG,
+  CharH,
+  CharI,
+  CharJ,
+  CharK,
+  CharL,
+  CharM,
+  CharN,
+  CharO,
+  CharP,
+  CharQ,
+  CharR,
+  CharS,
+  CharT,
+  CharU,
+  CharV,
+  CharW,
+  CharX,
+  CharY,
+  CharZ,
+};
+
+const int8_t CharsSize[26] = 
+{
+  sizeof(CharA) / sizeof(Point2D),
+  sizeof(CharB) / sizeof(Point2D),
+  sizeof(CharC) / sizeof(Point2D),
+  sizeof(CharD) / sizeof(Point2D),
+  sizeof(CharE) / sizeof(Point2D),
+  sizeof(CharF) / sizeof(Point2D),
+  sizeof(CharG) / sizeof(Point2D),
+  sizeof(CharH) / sizeof(Point2D),
+  sizeof(CharI) / sizeof(Point2D),
+  sizeof(CharJ) / sizeof(Point2D),
+  sizeof(CharK) / sizeof(Point2D),
+  sizeof(CharL) / sizeof(Point2D),
+  sizeof(CharM) / sizeof(Point2D),
+  sizeof(CharN) / sizeof(Point2D),
+  sizeof(CharO) / sizeof(Point2D),
+  sizeof(CharP) / sizeof(Point2D),
+  sizeof(CharQ) / sizeof(Point2D),
+  sizeof(CharR) / sizeof(Point2D),
+  sizeof(CharS) / sizeof(Point2D),
+  sizeof(CharT) / sizeof(Point2D),
+  sizeof(CharU) / sizeof(Point2D),
+  sizeof(CharV) / sizeof(Point2D),
+  sizeof(CharW) / sizeof(Point2D),
+  sizeof(CharX) / sizeof(Point2D),
+  sizeof(CharY) / sizeof(Point2D),
+  sizeof(CharZ) / sizeof(Point2D),
+};
+
+int TextZIndex = 0;
+int TextCharIndex = 0;
+char *Text = "ABCDEFGHIJKLMNOPQRSTUVWXYZ "; 
+
+
+void InitTextEffect()
+{
+  TextZIndex = 0;
+  TextCharIndex = 0;
+}
+
+int CalculatePointValue(int8_t value)
+{
+  return round(value * (CUBE_DIMENSION - 1) / 127.0);
+}
+
+void DrawChar(Point2D *ch, int size, int z)
+{
+  Point2D p0;
+  Point2D p1;
+
+  for (int i = 0; i < size / 2; ++i)
+  {
+    int index = i * 2;
+
+    memcpy_P(&p0, &ch[index], sizeof(Point2D));
+    memcpy_P(&p1, &ch[index + 1], sizeof(Point2D));
+
+    Line(CalculatePointValue(p0.X), CalculatePointValue(p0.Y), z, CalculatePointValue(p1.X), CalculatePointValue(p1.Y), z);   
+  }
+}
+
+void TextEffectWorkerClbk(bool eventExec)
+{
+  SetCube(0);
+
+  int charAscii = Text[TextCharIndex] - TEXT_ASCII_START_INDEX;
+
+  if (Text[TextCharIndex] != ' ')
+    DrawChar(Chars[charAscii], CharsSize[charAscii], TextZIndex);
+
+  TextZIndex++;
+  if (TextZIndex == CUBE_DIMENSION)
+  {
+    TextZIndex = 0;
+    TextCharIndex++;
+
+    if (Text[TextCharIndex] == '\0')
+    {
+      TextCharIndex = 0;
+    }
+  }
+}
+TimeWorker TextEffectWorker = TimeWorker(TEXT_EFFECT_DELAY, TextEffectWorkerClbk);
+
+
 void CubeControllerWorkerClbk(bool eventExec)
 {
   switch (CurrentAppState)
@@ -1123,6 +1574,9 @@ void CubeControllerWorkerClbk(bool eventExec)
     case CubeEffect:
       CubeEffectWorker.Update();
       break;
+    case TextEffect:
+      TextEffectWorker.Update();
+      break;
     default:
       SetCube(0);
       break;
@@ -1142,7 +1596,7 @@ void setup()
   pinMode(CLOCK_PIN, OUTPUT);
   pinMode(LATCH_PIN, OUTPUT);
   
-  CurrentAppState = StarsEffect;
+  CurrentAppState = TextEffect;
 
   InitPong();
   InitRain();
@@ -1151,6 +1605,7 @@ void setup()
   InitBreath();
   InitFlipFlop();
   InitCubeEffect();
+  InitTextEffect();
 }
 
 void loop() 
