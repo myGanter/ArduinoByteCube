@@ -32,6 +32,8 @@
 #define TEXT_EFFECT_DELAY 150 //millis
 #define TEXT_ASCII_START_INDEX 65
 
+#define BORDER_EFFECT_DELAY 50 //millis
+
 
 enum AppState : int
 {
@@ -44,7 +46,8 @@ enum AppState : int
   StarsEffect = 6,
   LayerEffect = 7,
   CubeEffect = 8,
-  TextEffect = 9
+  BorderEffect = 9,
+  TextEffect = 10
 };
 
 enum NXYZ : int
@@ -1071,6 +1074,111 @@ void LayerForceWorkerClbk(bool eventExec)
 TimeWorker LayerForceWorker = TimeWorker(LAYER_FORCE_DELAY, LayerForceWorkerClbk);
 
 
+NXYZ BorderDiraction = Ze;
+Point BorderPoint;
+int8_t BorderInc = 1;
+bool BorderBlackOut = false;
+
+void InitBorderWorker()
+{
+  SetCube(0);
+
+  BorderDiraction = Ze;
+  BorderPoint = { .X = 0, .Y = 0, .Z = 0 };
+  BorderInc = 1;
+  BorderBlackOut = false;
+}
+
+void BorderWorkerClbk(bool eventExec)
+{
+  if (BorderBlackOut)  
+    UnSetPoint(BorderPoint.X, BorderPoint.Y, BorderPoint.Z);  
+  else  
+    SetPoint(BorderPoint.X, BorderPoint.Y, BorderPoint.Z);
+
+  bool reInitDiraction = false;
+
+  switch (BorderDiraction)
+  {
+    case Xe:
+      BorderPoint.X += BorderInc;
+
+      if (BorderInc > 0 && BorderPoint.X == CUBE_DIMENSION)
+      {
+        BorderPoint.X = CUBE_DIMENSION - 1;
+        reInitDiraction = true;
+      }
+      else if (BorderInc < 0 && BorderPoint.X < 0)
+      {
+        BorderPoint.X = 0;
+        reInitDiraction = true;
+      }
+      break;
+    case Ye:
+      BorderPoint.Y += BorderInc;
+
+      if (BorderInc > 0 && BorderPoint.Y == CUBE_DIMENSION)
+      {
+        BorderPoint.Y = CUBE_DIMENSION - 1;
+        reInitDiraction = true;
+      }
+      else if (BorderInc < 0 && BorderPoint.Y < 0)
+      {
+        BorderPoint.Y = 0;
+        reInitDiraction = true;
+      }
+      break;
+    case Ze:
+      BorderPoint.Z += BorderInc;
+
+      if (BorderInc > 0 && BorderPoint.Z == CUBE_DIMENSION)
+      {
+        BorderPoint.Z = CUBE_DIMENSION - 1;
+        reInitDiraction = true;
+      }
+      else if (BorderInc < 0 && BorderPoint.Z < 0)
+      {
+        BorderPoint.Z = 0;
+        reInitDiraction = true;
+      }
+      break;
+  }
+
+  if (reInitDiraction)
+  {   
+    int diractionRandomLength = 0;
+    NXYZ diractionRandom[3];
+
+    if (BorderDiraction != Xe)
+      diractionRandom[diractionRandomLength++] = Xe;
+    if (BorderDiraction != Ye)
+      diractionRandom[diractionRandomLength++] = Ye;
+    if (BorderDiraction != Ze)
+      diractionRandom[diractionRandomLength++] = Ze;
+
+    BorderDiraction = diractionRandom[random(diractionRandomLength)];
+
+    switch (BorderDiraction)
+    {
+      case Xe:
+        BorderInc = BorderPoint.X == 0 ? 1 : -1;
+        BorderBlackOut = CheckPoint(BorderPoint.X + BorderInc, BorderPoint.Y, BorderPoint.Z);
+        break;
+      case Ye:
+        BorderInc = BorderPoint.Y == 0 ? 1 : -1;
+        BorderBlackOut = CheckPoint(BorderPoint.X, BorderPoint.Y + BorderInc, BorderPoint.Z);
+        break;
+      case Ze:
+        BorderInc = BorderPoint.Z == 0 ? 1 : -1;
+        BorderBlackOut = CheckPoint(BorderPoint.X, BorderPoint.Y, BorderPoint.Z + BorderInc);        
+        break;
+    }
+  }
+}
+
+TimeWorker BorderWorker = TimeWorker(BORDER_EFFECT_DELAY, BorderWorkerClbk);
+
+
 int CubeRadius = 0;
 int CubeRadiusCounter = 1;
 
@@ -1581,6 +1689,9 @@ void CubeControllerWorkerClbk(bool eventExec)
     case CubeEffect:
       CubeEffectWorker.Update();
       break;
+    case BorderEffect:
+      BorderWorker.Update();
+      break;
     case TextEffect:
       TextEffectWorker.Update();
       break;
@@ -1603,7 +1714,7 @@ void setup()
   pinMode(CLOCK_PIN, OUTPUT);
   pinMode(LATCH_PIN, OUTPUT);
   
-  CurrentAppState = LayerEffect;
+  CurrentAppState = BorderEffect;
 
   InitPong();
   InitRain();
@@ -1613,6 +1724,7 @@ void setup()
   InitFlipFlop();
   InitCubeEffect();
   InitTextEffect();
+  InitBorderWorker();
 }
 
 void loop() 
