@@ -1490,7 +1490,6 @@ int TextZIndex = 0;
 int TextCharIndex = 0;
 char *Text = "ABCDEFGHIJKLMNOPQRSTUVWXYZ "; 
 
-
 void InitTextEffect()
 {
   TextZIndex = 0;
@@ -1596,7 +1595,7 @@ void setup()
   pinMode(CLOCK_PIN, OUTPUT);
   pinMode(LATCH_PIN, OUTPUT);
   
-  CurrentAppState = TextEffect;
+  CurrentAppState = LayerEffect;
 
   InitPong();
   InitRain();
