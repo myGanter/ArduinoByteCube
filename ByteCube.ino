@@ -25,6 +25,7 @@
 #define START_LAYER_EFFECT_DELAY 600 //millis
 #define LAYER_FORCE_DELAY 300 //millis
 #define LAYER_SPEED_FORCE 30
+#define MAX_SPEED_LOOP_COUNT 5
 
 #define CUBE_EFFECT_DELAY 400 //millis
 
@@ -995,6 +996,7 @@ NXYZ Layer = Ye;
 int LayerIndex = 0;
 int LayerSpeed = START_LAYER_EFFECT_DELAY;
 int LayerSpeedForce = -LAYER_SPEED_FORCE;
+int MaxSpeedLoopCounter = 0;
 
 void InitLayer()
 {
@@ -1002,6 +1004,7 @@ void InitLayer()
   LayerIndex = 0;
   LayerSpeed = START_LAYER_EFFECT_DELAY;
   LayerSpeedForce = -LAYER_SPEED_FORCE;
+  MaxSpeedLoopCounter = 0;
 }
 
 void LayerWorkerClbk(bool eventExec)
@@ -1034,7 +1037,12 @@ void LayerForceWorkerClbk(bool eventExec)
   if (LayerSpeed <= abs(LayerSpeedForce))
   {
     LayerSpeed = abs(LayerSpeedForce);
-    LayerSpeedForce = -LayerSpeedForce;
+
+    if (++MaxSpeedLoopCounter == MAX_SPEED_LOOP_COUNT)
+    {
+      MaxSpeedLoopCounter = 0;
+      LayerSpeedForce = -LayerSpeedForce;
+    }
   }
   else if (LayerSpeed >= START_LAYER_EFFECT_DELAY)
   {
