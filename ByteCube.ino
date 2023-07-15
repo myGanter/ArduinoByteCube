@@ -2,6 +2,10 @@
 #define DATA_PIN 8 //DS
 #define LATCH_PIN 9 //STCP
 #define CLOCK_PIN 10 //SHCP
+#define BUTTONS_PIN 1
+#define RANDOM_PIN 2
+#define BUTTON_1_THRESHOLD 200
+#define BUTTON_2_THRESHOLD 600
 #define SCHEMA_BUG << 1 //a bug in my scheme, remove it if the scheme is correct
 
 #define CUBE_RENDER_LAYER_DELAY 500 //micros
@@ -36,18 +40,18 @@
 
 
 enum AppState : int
-{
-  FullMatrixOff = 0,
-  FullMatrixOn = 1,
-  RainEffect = 2,
-  PongEffect = 3,
-  BreathEffect = 4,
-  FlipFlopEffect = 5,
-  StarsEffect = 6,
-  LayerEffect = 7,
-  CubeEffect = 8,
-  BorderEffect = 9,
-  TextEffect = 10
+{  
+  FullMatrixOn = 0,
+  RainEffect = 1,
+  PongEffect = 2,
+  BreathEffect = 3,
+  FlipFlopEffect = 4,
+  StarsEffect = 5,
+  LayerEffect = 6,
+  CubeEffect = 7,
+  BorderEffect = 8,
+  TextEffect = 9,
+  FullMatrixOff = 10
 };
 
 enum NXYZ : int
@@ -1079,7 +1083,7 @@ Point BorderPoint;
 int8_t BorderInc = 1;
 bool BorderBlackOut = false;
 
-void InitBorderWorker()
+void InitBorder()
 {
   SetCube(0);
 
@@ -1657,8 +1661,67 @@ void TextEffectWorkerClbk(bool eventExec)
 TimeWorker TextEffectWorker = TimeWorker(TEXT_EFFECT_DELAY, TextEffectWorkerClbk);
 
 
+bool ButtonPressed = false;
+
+void ReInitEffect()
+{
+  switch (CurrentAppState)
+  {
+    case RainEffect:
+      InitRain();
+      break;
+    case PongEffect:
+      InitPong();
+      break;
+    case BreathEffect:
+      InitBreath();
+      break;
+    case FlipFlopEffect:
+      InitFlipFlop();
+      break;
+    case StarsEffect:
+      InitStars();
+      break;
+    case LayerEffect:
+      InitLayer();
+      break;
+    case CubeEffect:
+      InitCubeEffect();
+      break;
+    case BorderEffect:
+      InitBorder();
+      break;
+    case TextEffect:
+      InitTextEffect();
+      break;
+  }
+}
+
 void CubeControllerWorkerClbk(bool eventExec)
 {
+  int buttonValue = analogRead(BUTTONS_PIN);
+  
+  if (!ButtonPressed)
+  {
+    if (buttonValue > BUTTON_2_THRESHOLD)
+    {
+      ButtonPressed = true;
+      CurrentAppState = (AppState)((CurrentAppState + 1) % (FullMatrixOff + 1));
+      ReInitEffect(); 
+    }
+    else if (buttonValue > BUTTON_1_THRESHOLD)
+    {      
+      ButtonPressed = true;
+      int state = CurrentAppState - 1;
+      CurrentAppState = state < 0 ? FullMatrixOff : (AppState)state;
+      ReInitEffect();
+    }
+  }
+  else if (buttonValue < BUTTON_1_THRESHOLD)
+  {
+    ButtonPressed = false;
+  }
+
   switch (CurrentAppState)
   {
     case FullMatrixOff:
@@ -1708,23 +1771,23 @@ void setup()
 {
   Serial.begin(9600);
 
-  randomSeed(analogRead(2));
+  randomSeed(analogRead(RANDOM_PIN));
 
   pinMode(DATA_PIN, OUTPUT);
   pinMode(CLOCK_PIN, OUTPUT);
   pinMode(LATCH_PIN, OUTPUT);
-  
-  CurrentAppState = BorderEffect;
+
+  CurrentAppState = FullMatrixOn;
 
   InitPong();
   InitRain();
   InitLayer();
   InitStars();
   InitBreath();
+  InitBorder();
   InitFlipFlop();
   InitCubeEffect();
   InitTextEffect();
-  InitBorderWorker();
 }
 
 void loop() 
