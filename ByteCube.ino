@@ -38,6 +38,9 @@
 
 #define BORDER_EFFECT_DELAY 50 //millis
 
+#define WAVE_EFFECT_DELAY 70 //millis
+#define WAVE_COUNTER_INC 0.5
+
 
 enum AppState : int
 {  
@@ -51,7 +54,8 @@ enum AppState : int
   CubeEffect = 7,
   BorderEffect = 8,
   TextEffect = 9,
-  FullMatrixOff = 10
+  WaveEffect = 10,
+  FullMatrixOff = 11
 };
 
 enum NXYZ : int
@@ -1661,6 +1665,35 @@ void TextEffectWorkerClbk(bool eventExec)
 TimeWorker TextEffectWorker = TimeWorker(TEXT_EFFECT_DELAY, TextEffectWorkerClbk);
 
 
+float CornerCounter = 0;
+float CornerCounterInc = WAVE_COUNTER_INC;
+const int WaveCenter = CUBE_DIMENSION / 2;
+
+void InitWave()
+{
+  CornerCounter = 0;
+  CornerCounterInc = WAVE_COUNTER_INC;
+}
+
+void WaveEffectWorkerClbk(bool eventExec)
+{
+  SetCube(0);
+
+  for (int layer = 0; layer < CUBE_DIMENSION; ++layer)
+  {
+    float value = sin(layer * CornerCounterInc + CornerCounter);
+    int max = value > 0 ? WaveCenter : CUBE_DIMENSION - 1 - WaveCenter;
+    int calcValue = round(value * max);
+
+    CubeBuffer[layer][WaveCenter + calcValue] = 255;
+  }
+
+  CornerCounter += CornerCounterInc;
+}
+
+TimeWorker WaveEffectWorker = TimeWorker(WAVE_EFFECT_DELAY, WaveEffectWorkerClbk);
+
+
 bool ButtonPressed = false;
 
 void ReInitEffect()
@@ -1693,6 +1726,9 @@ void ReInitEffect()
       break;
     case TextEffect:
       InitTextEffect();
+      break;
+    case WaveEffect:
+      InitWave();
       break;
   }
 }
@@ -1758,6 +1794,9 @@ void CubeControllerWorkerClbk(bool eventExec)
     case TextEffect:
       TextEffectWorker.Update();
       break;
+    case WaveEffect:
+      WaveEffectWorker.Update();
+      break;
     default:
       SetCube(0);
       break;
@@ -1779,15 +1818,7 @@ void setup()
 
   CurrentAppState = FullMatrixOn;
 
-  InitPong();
-  InitRain();
-  InitLayer();
-  InitStars();
-  InitBreath();
-  InitBorder();
-  InitFlipFlop();
-  InitCubeEffect();
-  InitTextEffect();
+  ReInitEffect();
 }
 
 void loop() 
