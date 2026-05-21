@@ -11,6 +11,12 @@
 #define CUBE_RENDER_LAYER_DELAY 500 //micros
 #define CUBE_CONTROLLER_DELAY 10 //millis
 
+#define CPU_FREQUENCY 16000000 //Hz
+#define FREQUENCY_DIVIDER (1 << CS10) | (1 << CS12) //divides by 1024
+#define TIMER_FREQUENCY (CPU_FREQUENCY / 1024) //Hz
+#define TIMER_TICK_DURATION (1000.0 / TIMER_FREQUENCY) //millis
+#define TIMER_MAX_COUNT (int)(CUBE_RENDER_LAYER_DELAY / 1000.0 / TIMER_TICK_DURATION - 1)
+
 #define RAIN_EFFECT_DELAY 70 //millis
 #define RAIN_DROP_COUNT 10
 
@@ -41,6 +47,9 @@
 #define WAVE_EFFECT_DELAY 70 //millis
 #define WAVE_COUNTER_INC 0.5
 
+
+#include <avr/io.h>
+#include <avr/interrupt.h>
 
 enum AppState : int
 {  
@@ -90,7 +99,7 @@ struct Point2D
 
 const int MaxCubeLenght2 = CUBE_DIMENSION * CUBE_DIMENSION;
 const int MaxCubeLenght = CUBE_DIMENSION * CUBE_DIMENSION * CUBE_DIMENSION;
-uint8_t CubeBuffer[CUBE_DIMENSION][CUBE_DIMENSION];
+volatile uint8_t CubeBuffer[CUBE_DIMENSION][CUBE_DIMENSION];
 AppState CurrentAppState = FullMatrixOff;
 
 
@@ -494,36 +503,6 @@ void Line(int x1, int y1, int z1, int x2, int y2, int z2)
 //-------------------- end drawing
 
 
-int CurrentLayerRender = 0;
-
-void CubeRenderWorkerClbk(bool eventExec)
-{
-  if (CurrentLayerRender == CUBE_DIMENSION)
-  {   
-    FastSetPin(LATCH_PIN, LOW);
-    for (int layer = 0; layer < CUBE_DIMENSION + 1; ++layer)
-    {
-      FastShiftOut(DATA_PIN, CLOCK_PIN, LSBFIRST, 0);
-    }
-    FastSetPin(LATCH_PIN, HIGH);
-
-    CurrentLayerRender = 0;
-  }
-
-  FastSetPin(LATCH_PIN, LOW);
-  FastShiftOut(DATA_PIN, CLOCK_PIN, MSBFIRST, (1 << CurrentLayerRender) SCHEMA_BUG);
-  for (int row = CUBE_DIMENSION - 1; row > -1; --row)
-  {
-    FastShiftOut(DATA_PIN, CLOCK_PIN, MSBFIRST, (CubeBuffer[CurrentLayerRender][row]) SCHEMA_BUG);
-  }
-  FastSetPin(LATCH_PIN, HIGH);
-
-  CurrentLayerRender++;  
-}
-
-TimeWorker CubeRenderWorker = TimeWorker(CUBE_RENDER_LAYER_DELAY, CubeRenderWorkerClbk, NULL, true, true);
-
-
 PointFloat Rain[RAIN_DROP_COUNT];
 float RainSpeed[RAIN_DROP_COUNT];
 
@@ -755,6 +734,7 @@ NXYZ FirstStap;
 int FirstStapValue;
 NXYZ SecondStap;
 int SecondStapValue;
+bool IsCalledInitStaps;
 
 void InitFlipFlop()
 {
@@ -771,6 +751,7 @@ void InitFlipFlop()
   FirstStapValue = 1;
   SecondStap = Ye;
   SecondStapValue = -1;
+  IsCalledInitStaps = false;
 }
 
 int SearchIndexChildPoint(Point *parentP)
@@ -921,7 +902,10 @@ void DrawLines()
 
 void FlipFlopClbk(bool eventExec)
 {
-  SetCube(0);
+  if (!IsCalledInitStaps)
+    SetCube(0);
+
+  IsCalledInitStaps = false;
 
   DrawLines();
 
@@ -970,6 +954,7 @@ void FlipFlopClbk(bool eventExec)
     if (isNextStap)
     {
       InitStaps();
+      IsCalledInitStaps = true;
     }
     else
     {
@@ -1806,10 +1791,52 @@ void CubeControllerWorkerClbk(bool eventExec)
 TimeWorker CubeControllerWorker = TimeWorker(CUBE_CONTROLLER_DELAY, CubeControllerWorkerClbk);
 
 
+void InitializeISRRender()
+{
+  cli();
+
+  TCCR1A = 0;
+  TCCR1B = 0;
+
+  OCR1A = TIMER_MAX_COUNT;
+  TCCR1B |= (1 << WGM12);
+
+  TCCR1B |= FREQUENCY_DIVIDER;
+
+  TIMSK1 |= (1 << OCIE1A);
+
+  sei();
+}
+
+volatile int CurrentLayerRender = 0;
+
+ISR(TIMER1_COMPA_vect)
+{
+  if (CurrentLayerRender == CUBE_DIMENSION)
+  {   
+    FastSetPin(LATCH_PIN, LOW);
+    for (int layer = 0; layer < CUBE_DIMENSION + 1; ++layer)
+    {
+      FastShiftOut(DATA_PIN, CLOCK_PIN, LSBFIRST, 0);
+    }
+    FastSetPin(LATCH_PIN, HIGH);
+
+    CurrentLayerRender = 0;
+  }
+
+  FastSetPin(LATCH_PIN, LOW);
+  FastShiftOut(DATA_PIN, CLOCK_PIN, MSBFIRST, (1 << CurrentLayerRender) SCHEMA_BUG);
+  for (int row = CUBE_DIMENSION - 1; row > -1; --row)
+  {
+    FastShiftOut(DATA_PIN, CLOCK_PIN, MSBFIRST, (CubeBuffer[CurrentLayerRender][row]) SCHEMA_BUG);
+  }
+  FastSetPin(LATCH_PIN, HIGH);
+
+  CurrentLayerRender++;  
+}
+
 void setup() 
 {
-  Serial.begin(9600);
-
   randomSeed(analogRead(RANDOM_PIN));
 
   pinMode(DATA_PIN, OUTPUT);
@@ -1819,10 +1846,10 @@ void setup()
   CurrentAppState = FullMatrixOn;
 
   ReInitEffect();
+  InitializeISRRender();
 }
 
 void loop() 
 {
   CubeControllerWorker.Update();
-  CubeRenderWorker.Update();
 }
