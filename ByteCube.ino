@@ -8,7 +8,7 @@
 #define BUTTON_2_THRESHOLD 600
 #define SCHEMA_BUG << 1 //a bug in my scheme, remove it if the scheme is correct
 
-#define CUBE_RENDER_LAYER_DELAY 500 //micros
+#define CUBE_RENDER_LAYER_DELAY 800 //micros
 #define CUBE_CONTROLLER_DELAY 10 //millis
 
 #define CPU_FREQUENCY 16000000 //Hz
@@ -47,6 +47,8 @@
 #define WAVE_EFFECT_DELAY 70 //millis
 #define WAVE_COUNTER_INC 0.5
 
+#define ROTATING_BEACON_EFFECT_DELAY 25 //millis
+#define ROTATING_BEACON_ELEMENT_COUNT CUBE_DIMENSION
 
 #include <avr/io.h>
 #include <avr/interrupt.h>
@@ -64,7 +66,8 @@ enum AppState : int
   BorderEffect = 8,
   TextEffect = 9,
   WaveEffect = 10,
-  FullMatrixOff = 11
+  RotatingBeaconEffect = 11,
+  FullMatrixOff = 12
 };
 
 enum NXYZ : int
@@ -399,12 +402,12 @@ void SetCube(uint8_t value)
 //layer = x
 //line = y
 //cell = z
-void SetPoint(int layer, int line, int cell)
+inline void SetPoint(int layer, int line, int cell)
 {
   CubeBuffer[layer][line] |= 1 << cell; 
 }
 
-void UnSetPoint(int layer, int line, int cell)
+inline void UnSetPoint(int layer, int line, int cell)
 {
   CubeBuffer[layer][line] &= ~(1 << cell); 
 }
@@ -417,7 +420,7 @@ void SetPoint(int layer, int line, int cell, bool value)
     UnSetPoint(layer, line, cell);
 }
 
-bool CheckPoint(int layer, int line, int cell)
+inline bool CheckPoint(int layer, int line, int cell)
 {
   return CubeBuffer[layer][line] & (1 << cell);
 }
@@ -1679,6 +1682,70 @@ void WaveEffectWorkerClbk(bool eventExec)
 TimeWorker WaveEffectWorker = TimeWorker(WAVE_EFFECT_DELAY, WaveEffectWorkerClbk);
 
 
+Point BeaconWorm[ROTATING_BEACON_ELEMENT_COUNT];
+int8_t BeaconWormIndex;
+int8_t BeaconIncrement;
+bool BeaconIsXAxis;
+
+void InitRotatingBeacon()
+{
+  for (int8_t i = 0; i < ROTATING_BEACON_ELEMENT_COUNT; ++i)
+  {
+    BeaconWorm[i] = { .X = 0, .Y = 0, .Z = 0 };
+  }
+
+  BeaconWormIndex = 0;
+  BeaconIncrement = 1;
+  BeaconIsXAxis = true;
+}
+
+void RotatingBeaconClbk(bool eventExec)
+{
+  SetCube(0);
+
+  for (int8_t i = 0; i < ROTATING_BEACON_ELEMENT_COUNT; ++i)
+  {
+    Point point = BeaconWorm[i];
+
+    for (int8_t j = 0; j < CUBE_DIMENSION; ++j)
+    {
+      SetPoint(point.X, j, point.Z);
+    }    
+  }
+
+  Point lastPoint = BeaconWorm[BeaconWormIndex];
+  BeaconWormIndex = (BeaconWormIndex + 1) % ROTATING_BEACON_ELEMENT_COUNT;
+  BeaconWorm[BeaconWormIndex] = lastPoint;  
+
+  int8_t* targetAxis = NULL; 
+
+  if (BeaconIsXAxis)
+  {
+    targetAxis = &BeaconWorm[BeaconWormIndex].X;
+  }
+  else
+  {
+    targetAxis = &BeaconWorm[BeaconWormIndex].Z;
+  }
+
+  *targetAxis += BeaconIncrement;
+  int8_t targetAxisValue = *targetAxis;
+
+  if (targetAxisValue == CUBE_DIMENSION - 1)
+  {
+    BeaconIncrement = BeaconIsXAxis ? 1 : -1;    
+    BeaconIsXAxis = !BeaconIsXAxis;
+  }
+  else if (targetAxisValue == 0)
+  {
+    BeaconIncrement = BeaconIsXAxis ? -1 : 1;
+    BeaconIsXAxis = !BeaconIsXAxis;
+  }
+}
+
+TimeWorker RotatingBeaconWorker = TimeWorker(ROTATING_BEACON_EFFECT_DELAY, RotatingBeaconClbk);
+
+
 bool ButtonPressed = false;
 
 void ReInitEffect()
@@ -1714,6 +1781,9 @@ void ReInitEffect()
       break;
     case WaveEffect:
       InitWave();
+      break;
+    case RotatingBeaconEffect:
+      InitRotatingBeacon();
       break;
   }
 }
@@ -1782,6 +1852,9 @@ void CubeControllerWorkerClbk(bool eventExec)
     case WaveEffect:
       WaveEffectWorker.Update();
       break;
+    case RotatingBeaconEffect:
+      RotatingBeaconWorker.Update();
+      break;
     default:
       SetCube(0);
       break;
@@ -1798,9 +1871,10 @@ void InitializeISRRender()
   TCCR1A = 0;
   TCCR1B = 0;
 
+  TCNT1 = 0;
   OCR1A = TIMER_MAX_COUNT;
-  TCCR1B |= (1 << WGM12);
 
+  TCCR1B |= (1 << WGM12);
   TCCR1B |= FREQUENCY_DIVIDER;
 
   TIMSK1 |= (1 << OCIE1A);
