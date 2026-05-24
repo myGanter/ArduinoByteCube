@@ -1953,25 +1953,29 @@ ChainVertex GetRandomChainVertex(SidesXYZ side)
 
 inline void ChainApplyNoise(float* axis)
 {
-  float value = RandomFloat(3);
+  float noise = RandomFloat(3);
+  float newValue = *axis;
 
   if (random(2) == 0)
   {
-    *axis += value;
+    newValue += noise;
   }
   else
   {
-    *axis -= value;
+    newValue -= noise;
   }
 
-  if (*axis < -1)
+  if (newValue < -1)
   {
-    *axis = -1;
+    newValue = -1;
   }
-  else if (*axis > 1)
+  else if (newValue > 1)
   {
-    *axis = 1;
+    newValue = 1;
   }
+
+  if (newValue != 0)
+    *axis = newValue;
 }
 
 void InitChain()
