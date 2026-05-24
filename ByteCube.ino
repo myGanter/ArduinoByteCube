@@ -50,6 +50,11 @@
 #define ROTATING_BEACON_EFFECT_DELAY 25 //millis
 #define ROTATING_BEACON_ELEMENT_COUNT CUBE_DIMENSION
 
+#define CHAIN_EFFECT_DELAY 60 //millis
+#define CHAIN_ELEMENT_COUNT 2 //1 to n
+#define CHAIN_PRINT_MODE 1 //1 - chain 2 - points
+#define CHAIN_THRESHOLD 40 //%
+
 #include <avr/io.h>
 #include <avr/interrupt.h>
 
@@ -67,7 +72,8 @@ enum AppState : int
   TextEffect = 9,
   WaveEffect = 10,
   RotatingBeaconEffect = 11,
-  FullMatrixOff = 12
+  ChainEffect = 12,
+  FullMatrixOff = 13
 };
 
 enum NXYZ : int
@@ -76,6 +82,16 @@ enum NXYZ : int
   Xe = 1,
   Ye = 2,
   Ze = 3
+};
+
+enum SidesXYZ : uint8_t
+{
+  SideX0 = 0,
+  SideX1 = 1,
+  SideY0 = 2,
+  SideY1 = 3,
+  SideZ0 = 4,
+  SideZ1 = 5
 };
 
 struct Point
@@ -97,7 +113,6 @@ struct Point2D
   int8_t X;
   int8_t Y;
 };
-
 
 
 const int MaxCubeLenght2 = CUBE_DIMENSION * CUBE_DIMENSION;
@@ -486,12 +501,17 @@ void UnSetPlaneZ(int cell)
   }
 }
 
+/*
 void Line(int x1, int y1, int z1, int x2, int y2, int z2)
 {
-  double l = sqrt(pow(x2 - x1, 2) + pow(y2 - y1, 2) + pow(z2 - z1, 2));
-  double dX = (x2 - x1) / l;
-  double dY = (y2 - y1) / l;
-  double dZ = (z2 - z1) / l;
+  int xDif = x2 - x1;
+  int yDif = y2 - y1;
+  int zDif = z2 - z1;
+
+  double l = sqrt(xDif * xDif + yDif * yDif + zDif * zDif);
+  double dX = (xDif) / l;
+  double dY = (yDif) / l;
+  double dZ = (zDif) / l;
 
   double x = x1, y = y1, z = z1;
 
@@ -501,6 +521,103 @@ void Line(int x1, int y1, int z1, int x2, int y2, int z2)
     x += dX;
     y += dY;
     z += dZ;
+  }
+}
+*/
+
+//Bresenham 3D
+void Line(int x1, int y1, int z1, int x2, int y2, int z2)
+{
+  int dx = abs(x2 - x1);
+  int dy = abs(y2 - y1);
+  int dz = abs(z2 - z1);
+
+  int xs = (x2 > x1) ? 1 : -1;
+  int ys = (y2 > y1) ? 1 : -1;
+  int zs = (z2 > z1) ? 1 : -1;
+
+  SetPoint(x1, y1, z1);
+
+  if (dx >= dy && dx >= dz)
+  {
+    int p1 = 2 * dy - dx;
+    int p2 = 2 * dz - dx;
+
+    while (x1 != x2)
+    {
+      x1 += xs;
+
+      if (p1 >= 0)
+      {
+        y1 += ys;
+        p1 -= 2 * dx;
+      }
+
+      if (p2 >= 0)
+      {
+        z1 += zs;
+        p2 -= 2 * dx;
+      }
+
+      p1 += 2 * dy;
+      p2 += 2 * dz;
+
+      SetPoint(x1, y1, z1);
+    }
+  }
+  else if (dy >= dx && dy >= dz)
+  {
+    int p1 = 2 * dx - dy;
+    int p2 = 2 * dz - dy;
+
+    while (y1 != y2)
+    {
+      y1 += ys;
+
+      if (p1 >= 0)
+      {
+        x1 += xs;
+        p1 -= 2 * dy;
+      }
+
+      if (p2 >= 0)
+      {
+        z1 += zs;
+        p2 -= 2 * dy;
+      }
+
+      p1 += 2 * dx;
+      p2 += 2 * dz;
+
+      SetPoint(x1, y1, z1);
+    }
+  }
+  else
+  {
+    int p1 = 2 * dy - dz;
+    int p2 = 2 * dx - dz;
+
+    while (z1 != z2)
+    {
+      z1 += zs;
+
+      if (p1 >= 0)
+      {
+        y1 += ys;
+        p1 -= 2 * dz;
+      }
+
+      if (p2 >= 0)
+      {
+        x1 += xs;
+        p2 -= 2 * dz;
+      }
+
+      p1 += 2 * dy;
+      p2 += 2 * dx;
+
+      SetPoint(x1, y1, z1);
+    }
   }
 }
 //-------------------- end drawing
@@ -1746,6 +1863,285 @@ void RotatingBeaconClbk(bool eventExec)
 TimeWorker RotatingBeaconWorker = TimeWorker(ROTATING_BEACON_EFFECT_DELAY, RotatingBeaconClbk);
 
 
+struct ChainVertex
+{  
+  Point Position;
+  SidesXYZ ActiveSide;
+  PointFloat Direction;
+};
+
+struct ChainSideInfo
+{
+  int8_t (*Selectors[3])(Point* p);
+  int8_t Info[3];
+};
+
+ChainVertex GetRandomChainVertex(SidesXYZ side);
+
+int8_t ChainXSelector(Point* p)
+{
+  return p->X;
+}
+
+int8_t ChainYSelector(Point* p)
+{
+  return p->Y;
+}
+
+int8_t ChainZSelector(Point* p)
+{
+  return p->Z;
+}
+
+bool ChainXIsZero(PointFloat* p)
+{
+  return p->X == 0;
+}
+
+bool ChainYIsZero(PointFloat* p)
+{
+  return p->Y == 0;
+}
+
+bool ChainZIsZero(PointFloat* p)
+{
+  return p->Z == 0;
+}
+
+ChainVertex ChainElements[CHAIN_ELEMENT_COUNT];
+ChainSideInfo ChainInfos[6] = 
+{
+  { .Selectors = { NULL, ChainYSelector, ChainZSelector }, .Info = { 0, -1, -1 } },
+  { .Selectors = { NULL, ChainYSelector, ChainZSelector }, .Info = { CUBE_DIMENSION - 1, -1, -1 } },
+  { .Selectors = { ChainXSelector, NULL, ChainZSelector }, .Info = { -1, 0, -1 } },
+  { .Selectors = { ChainXSelector, NULL, ChainZSelector }, .Info = { -1, CUBE_DIMENSION - 1, -1 } },
+  { .Selectors = { ChainXSelector, ChainYSelector, NULL }, .Info = { -1, -1, 0 } },
+  { .Selectors = { ChainXSelector, ChainYSelector, NULL }, .Info = { -1, -1, CUBE_DIMENSION - 1 } }
+};
+bool (*ChainDirectionIsZero[3])(PointFloat*) = { ChainXIsZero, ChainYIsZero, ChainZIsZero };
+
+ChainVertex GetRandomChainVertex(SidesXYZ side)
+{
+  Point ponit = { .X = random(CUBE_DIMENSION), .Y = random(CUBE_DIMENSION), .Z = random(CUBE_DIMENSION) };
+  PointFloat direction = { .X = random(2) == 0 ? -1 : 1, .Y = random(2) == 0 ? -1 : 1, .Z = random(2) == 0 ? -1 : 1 };
+
+  if (side == SideX0)
+  {
+    return { .Position = { .X = 0, .Y = ponit.Y, .Z = ponit.Z }, .ActiveSide = SideX0, .Direction = { .X = 0, .Y = direction.Y, .Z = direction.Z } };
+  }
+  else if (side == SideX1)
+  {
+    return { .Position = { .X = CUBE_DIMENSION - 1, .Y = ponit.Y, .Z = ponit.Z }, .ActiveSide = SideX1, .Direction = { .X = CUBE_DIMENSION - 1, .Y = direction.Y, .Z = direction.Z } };
+  }
+  else if (side == SideY0)
+  {
+    return { .Position = { .X = ponit.X, .Y = 0, .Z = ponit.Z }, .ActiveSide = SideY0, .Direction = { .X = direction.X, .Y = 0, .Z = direction.Z } };
+  }
+  else if (side == SideY1)
+  {
+    return { .Position = { .X = ponit.X, .Y = CUBE_DIMENSION - 1, .Z = ponit.Z }, .ActiveSide = SideY1, .Direction = { .X = direction.X, .Y = CUBE_DIMENSION - 1, .Z = direction.Z } };
+  }
+  else if (side == SideZ0)
+  {
+    return { .Position = { .X = ponit.X, .Y = ponit.Y, .Z = 0 }, .ActiveSide = SideZ0, .Direction = { .X = direction.X, .Y = direction.Y, .Z = 0 } };
+  }
+  else
+  {
+    return { .Position = { .X = ponit.X, .Y = ponit.Y, .Z = CUBE_DIMENSION - 1 }, .ActiveSide = SideZ1, .Direction = { .X = direction.X, .Y = direction.Y, .Z = CUBE_DIMENSION - 1 } };
+  }
+}
+
+inline void ChainApplyNoise(float* axis)
+{
+  float value = RandomFloat(3);
+
+  if (random(2) == 0)
+  {
+    *axis += value;
+  }
+  else
+  {
+    *axis -= value;
+  }
+
+  if (*axis < -1)
+  {
+    *axis = -1;
+  }
+  else if (*axis > 1)
+  {
+    *axis = 1;
+  }
+}
+
+void InitChain()
+{
+  for (uint8_t i = 0; i < CHAIN_ELEMENT_COUNT; ++i)
+  {
+    ChainElements[i] = GetRandomChainVertex(random(6));
+  }
+}
+
+inline void ChainPrint()
+{
+  SetCube(0);
+
+#if CHAIN_PRINT_MODE == 1
+  #if CHAIN_ELEMENT_COUNT == 1
+
+  Point chainElementPosition = ChainElements[0].Position;  
+  SetPoint(chainElementPosition.X, chainElementPosition.Y, chainElementPosition.Z);
+
+  #elif CHAIN_ELEMENT_COUNT == 2
+  
+  Point chainElementPosition1 = ChainElements[0].Position;
+  Point chainElementPosition2 = ChainElements[1].Position;
+  Line(chainElementPosition1.X, chainElementPosition1.Y, chainElementPosition1.Z, chainElementPosition2.X, chainElementPosition2.Y, chainElementPosition2.Z);
+
+  #else
+
+  for (uint8_t i = 1; i < CHAIN_ELEMENT_COUNT; ++i)
+  {
+    Point chainElementPosition = ChainElements[i].Position;
+    Point chainElementPositionPast = ChainElements[i - 1].Position;    
+    Line(chainElementPosition.X, chainElementPosition.Y, chainElementPosition.Z, chainElementPositionPast.X, chainElementPositionPast.Y, chainElementPositionPast.Z);
+  }
+  Point chainElementPosition1 = ChainElements[0].Position;
+  Point chainElementPosition2 = ChainElements[CHAIN_ELEMENT_COUNT - 1].Position;
+  Line(chainElementPosition1.X, chainElementPosition1.Y, chainElementPosition1.Z, chainElementPosition2.X, chainElementPosition2.Y, chainElementPosition2.Z);
+
+  #endif 
+#else
+
+  for (uint8_t i = 0; i < CHAIN_ELEMENT_COUNT; ++i)
+  {
+    Point chainElementPosition = ChainElements[i].Position;  
+    SetPoint(chainElementPosition.X, chainElementPosition.Y, chainElementPosition.Z);
+  }
+
+#endif
+}
+
+void ChainClbk(bool eventExec)
+{
+  ChainPrint();
+
+  for (uint8_t i = 0; i < CHAIN_ELEMENT_COUNT; ++i)
+  {
+    ChainVertex chainElement = ChainElements[i];
+
+    chainElement.Position.X += round(chainElement.Direction.X);
+    chainElement.Position.Y += round(chainElement.Direction.Y);
+    chainElement.Position.Z += round(chainElement.Direction.Z);
+
+    if (chainElement.Position.X < 0)
+      chainElement.Position.X = 0;
+    else if (chainElement.Position.X >= CUBE_DIMENSION)
+      chainElement.Position.X = CUBE_DIMENSION - 1;
+
+    if (chainElement.Position.Y < 0)
+      chainElement.Position.Y = 0;
+    else if (chainElement.Position.Y >= CUBE_DIMENSION)
+      chainElement.Position.Y = CUBE_DIMENSION - 1;
+
+    if (chainElement.Position.Z < 0)
+      chainElement.Position.Z = 0;
+    else if (chainElement.Position.Z >= CUBE_DIMENSION)
+      chainElement.Position.Z = CUBE_DIMENSION - 1;
+
+    ChainSideInfo currentSideInfo = ChainInfos[chainElement.ActiveSide];
+
+    for (uint8_t j = 0; j < 3; ++j)
+    {
+      if (currentSideInfo.Selectors[j] == NULL)
+        continue;
+
+      int8_t axisValue = (*currentSideInfo.Selectors[j])(&chainElement.Position);
+      
+      if ((axisValue != 0 && axisValue != CUBE_DIMENSION - 1) || (*ChainDirectionIsZero[j])(&chainElement.Direction))
+        continue;
+
+      ChainSideInfo nextSideInfo;
+      uint8_t k;
+      for (k = 0; k < 6; ++k)
+      {
+        if (ChainInfos[k].Info[j] == axisValue)
+        {
+          nextSideInfo = ChainInfos[k];
+          break;
+        }
+      }
+
+      chainElement.ActiveSide = k;
+
+      if (j == 0)
+      {
+        if (currentSideInfo.Info[1] == nextSideInfo.Info[1])
+        {
+          chainElement.Direction.Z = chainElement.Position.X == chainElement.Position.Z ? -chainElement.Direction.X : chainElement.Direction.X;
+          chainElement.Direction.X = 0;
+
+          if (random(100) <= CHAIN_THRESHOLD)
+            ChainApplyNoise(&chainElement.Direction.Z);
+        }
+        else 
+        {
+          chainElement.Direction.Y = chainElement.Position.X == chainElement.Position.Y ? -chainElement.Direction.X : chainElement.Direction.X;
+          chainElement.Direction.X = 0;
+
+          if (random(100) <= CHAIN_THRESHOLD)
+            ChainApplyNoise(&chainElement.Direction.Y);
+        }
+      }
+      else if (j == 1)
+      {
+        if (currentSideInfo.Info[0] == nextSideInfo.Info[0])
+        {
+          chainElement.Direction.Z = chainElement.Position.Y == chainElement.Position.Z ? -chainElement.Direction.Y : chainElement.Direction.Y;
+          chainElement.Direction.Y = 0;
+
+          if (random(100) <= CHAIN_THRESHOLD)
+            ChainApplyNoise(&chainElement.Direction.Z);
+        }
+        else 
+        {
+          chainElement.Direction.X = chainElement.Position.Y == chainElement.Position.X ? -chainElement.Direction.Y : chainElement.Direction.Y;
+          chainElement.Direction.Y = 0;
+
+          if (random(100) <= CHAIN_THRESHOLD)
+            ChainApplyNoise(&chainElement.Direction.X);
+        }
+      }
+      else 
+      {
+        if (currentSideInfo.Info[1] == nextSideInfo.Info[1])
+        {
+          chainElement.Direction.X = chainElement.Position.Z == chainElement.Position.X ? -chainElement.Direction.Z : chainElement.Direction.Z;
+          chainElement.Direction.Z = 0;
+
+          if (random(100) <= CHAIN_THRESHOLD)
+            ChainApplyNoise(&chainElement.Direction.X);
+        }
+        else 
+        {
+          chainElement.Direction.Y = chainElement.Position.Z == chainElement.Position.Y ? -chainElement.Direction.Z : chainElement.Direction.Z;
+          chainElement.Direction.Z = 0;
+
+          if (random(100) <= CHAIN_THRESHOLD)
+            ChainApplyNoise(&chainElement.Direction.Y);
+        }
+      }
+
+      break;
+    }
+
+    ChainElements[i] = chainElement;
+  }  
+}
+
+TimeWorker ChainWorker = TimeWorker(CHAIN_EFFECT_DELAY, ChainClbk);
+
+
 bool ButtonPressed = false;
 
 void ReInitEffect()
@@ -1784,6 +2180,9 @@ void ReInitEffect()
       break;
     case RotatingBeaconEffect:
       InitRotatingBeacon();
+      break;
+    case ChainEffect:
+      InitChain();
       break;
   }
 }
@@ -1854,6 +2253,9 @@ void CubeControllerWorkerClbk(bool eventExec)
       break;
     case RotatingBeaconEffect:
       RotatingBeaconWorker.Update();
+      break;
+    case ChainEffect:
+      ChainWorker.Update();
       break;
     default:
       SetCube(0);
