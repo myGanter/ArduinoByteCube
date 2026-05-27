@@ -51,9 +51,12 @@
 #define ROTATING_BEACON_ELEMENT_COUNT CUBE_DIMENSION
 
 #define CHAIN_EFFECT_DELAY 60 //millis
+#define CHAIN_CHANGE_MODE_DELAY 15000 //millis
 #define CHAIN_ELEMENT_COUNT 2 //1 to n
-#define CHAIN_PRINT_MODE 1 //1 - chain 2 - points
 #define CHAIN_THRESHOLD 40 //%
+
+#define STICK_EFFECT_DELAY 60 //millis
+#define STICK_ELEMENT_COUNT 1 //1 to n; STICK_ELEMENT_COUNT <= CHAIN_ELEMENT_COUNT
 
 #include <avr/io.h>
 #include <avr/interrupt.h>
@@ -73,7 +76,8 @@ enum AppState : int
   WaveEffect = 10,
   RotatingBeaconEffect = 11,
   ChainEffect = 12,
-  FullMatrixOff = 13
+  StickEffect = 13,
+  FullMatrixOff = 14
 };
 
 enum NXYZ : int
@@ -126,6 +130,11 @@ float RandomFloat(uint8_t accuracy = 1)
 {
   int divider = pow(10, accuracy);
   return random(divider) / (float)divider;
+}
+
+float RandomFloat(uint8_t min, uint8_t max, uint8_t divider)
+{
+  return random(min, max + 1) / (float)divider;
 }
 
 void GetCoordinateFromIndex(int index, int8_t *x, int8_t *y, int8_t *z)
@@ -224,6 +233,11 @@ class TimeWorker
         (*_clbk)(clbkArg);
         _lastExecTime = currentTime;
       }
+    }
+
+    void Reset()
+    {
+      _lastExecTime = _useMicros ? micros() : millis();
     }
 
     void SetOnlyEventInvoked(bool value)
@@ -1919,6 +1933,14 @@ ChainSideInfo ChainInfos[6] =
   { .Selectors = { ChainXSelector, ChainYSelector, NULL }, .Info = { -1, -1, CUBE_DIMENSION - 1 } }
 };
 bool (*ChainDirectionIsZero[3])(PointFloat*) = { ChainXIsZero, ChainYIsZero, ChainZIsZero };
+bool ChainPrintModeIsPoints;
+
+void ChainPrintModeChangeClbk(bool eventExec)
+{
+  ChainPrintModeIsPoints = !ChainPrintModeIsPoints;
+}
+
+TimeWorker ChainPrintModeChangeWorker = TimeWorker(CHAIN_CHANGE_MODE_DELAY, ChainPrintModeChangeClbk);
 
 ChainVertex GetRandomChainVertex(SidesXYZ side)
 {
@@ -1953,7 +1975,7 @@ ChainVertex GetRandomChainVertex(SidesXYZ side)
 
 inline void ChainApplyNoise(float* axis)
 {
-  float noise = RandomFloat(3);
+  float noise = RandomFloat(0, 500, 1000);
   float newValue = *axis;
 
   if (random(2) == 0)
@@ -1980,6 +2002,9 @@ inline void ChainApplyNoise(float* axis)
 
 void InitChain()
 {
+  ChainPrintModeIsPoints = false;
+  ChainPrintModeChangeWorker.Reset();
+
   for (uint8_t i = 0; i < CHAIN_ELEMENT_COUNT; ++i)
   {
     ChainElements[i] = GetRandomChainVertex(random(6));
@@ -1990,47 +2015,46 @@ inline void ChainPrint()
 {
   SetCube(0);
 
-#if CHAIN_PRINT_MODE == 1
-  #if CHAIN_ELEMENT_COUNT == 1
-
-  Point chainElementPosition = ChainElements[0].Position;  
-  SetPoint(chainElementPosition.X, chainElementPosition.Y, chainElementPosition.Z);
-
-  #elif CHAIN_ELEMENT_COUNT == 2
-  
-  Point chainElementPosition1 = ChainElements[0].Position;
-  Point chainElementPosition2 = ChainElements[1].Position;
-  Line(chainElementPosition1.X, chainElementPosition1.Y, chainElementPosition1.Z, chainElementPosition2.X, chainElementPosition2.Y, chainElementPosition2.Z);
-
-  #else
-
-  for (uint8_t i = 1; i < CHAIN_ELEMENT_COUNT; ++i)
+  if (ChainPrintModeIsPoints)
   {
-    Point chainElementPosition = ChainElements[i].Position;
-    Point chainElementPositionPast = ChainElements[i - 1].Position;    
-    Line(chainElementPosition.X, chainElementPosition.Y, chainElementPosition.Z, chainElementPositionPast.X, chainElementPositionPast.Y, chainElementPositionPast.Z);
+    for (uint8_t i = 0; i < CHAIN_ELEMENT_COUNT; ++i)
+    {
+      Point chainElementPosition = ChainElements[i].Position;  
+      SetPoint(chainElementPosition.X, chainElementPosition.Y, chainElementPosition.Z);
+    }
   }
-  Point chainElementPosition1 = ChainElements[0].Position;
-  Point chainElementPosition2 = ChainElements[CHAIN_ELEMENT_COUNT - 1].Position;
-  Line(chainElementPosition1.X, chainElementPosition1.Y, chainElementPosition1.Z, chainElementPosition2.X, chainElementPosition2.Y, chainElementPosition2.Z);
-
-  #endif 
-#else
-
-  for (uint8_t i = 0; i < CHAIN_ELEMENT_COUNT; ++i)
+  else
   {
-    Point chainElementPosition = ChainElements[i].Position;  
+    #if CHAIN_ELEMENT_COUNT == 1
+
+    Point chainElementPosition = ChainElements[0].Position;  
     SetPoint(chainElementPosition.X, chainElementPosition.Y, chainElementPosition.Z);
-  }
 
-#endif
+    #elif CHAIN_ELEMENT_COUNT == 2
+    
+    Point chainElementPosition1 = ChainElements[0].Position;
+    Point chainElementPosition2 = ChainElements[1].Position;
+    Line(chainElementPosition1.X, chainElementPosition1.Y, chainElementPosition1.Z, chainElementPosition2.X, chainElementPosition2.Y, chainElementPosition2.Z);
+
+    #else
+
+    for (uint8_t i = 1; i < CHAIN_ELEMENT_COUNT; ++i)
+    {
+      Point chainElementPosition = ChainElements[i].Position;
+      Point chainElementPositionPast = ChainElements[i - 1].Position;    
+      Line(chainElementPosition.X, chainElementPosition.Y, chainElementPosition.Z, chainElementPositionPast.X, chainElementPositionPast.Y, chainElementPositionPast.Z);
+    }
+    Point chainElementPosition1 = ChainElements[0].Position;
+    Point chainElementPosition2 = ChainElements[CHAIN_ELEMENT_COUNT - 1].Position;
+    Line(chainElementPosition1.X, chainElementPosition1.Y, chainElementPosition1.Z, chainElementPosition2.X, chainElementPosition2.Y, chainElementPosition2.Z);
+
+    #endif 
+  }
 }
 
-void ChainClbk(bool eventExec)
+void ChainElementsUpdate(uint8_t elementCount)
 {
-  ChainPrint();
-
-  for (uint8_t i = 0; i < CHAIN_ELEMENT_COUNT; ++i)
+  for (uint8_t i = 0; i < elementCount; ++i)
   {
     ChainVertex chainElement = ChainElements[i];
 
@@ -2140,10 +2164,67 @@ void ChainClbk(bool eventExec)
     }
 
     ChainElements[i] = chainElement;
-  }  
+  }
+}
+
+void ChainClbk(bool eventExec)
+{
+  ChainPrintModeChangeWorker.Update();
+
+  ChainPrint();
+
+  ChainElementsUpdate(CHAIN_ELEMENT_COUNT);
 }
 
 TimeWorker ChainWorker = TimeWorker(CHAIN_EFFECT_DELAY, ChainClbk);
+
+
+void InitStick()
+{
+  InitChain();
+}
+
+void StickClbk(bool eventExec)
+{
+  const int8_t maxCubeIndex = CUBE_DIMENSION - 1;
+
+  SetCube(0);
+
+  for (uint8_t i = 0; i < STICK_ELEMENT_COUNT; ++i)
+  {
+    Point masterPoint = ChainElements[i].Position;
+    SidesXYZ activeSide = ChainElements[i].ActiveSide;
+    Point slavePoint;
+
+    switch (activeSide)
+    {
+      case SideX0:
+        slavePoint = { .X = maxCubeIndex, .Y = maxCubeIndex - masterPoint.Y, .Z = maxCubeIndex - masterPoint.Z };
+        break;
+      case SideX1:
+        slavePoint = { .X = 0, .Y = maxCubeIndex - masterPoint.Y, .Z = maxCubeIndex - masterPoint.Z };
+        break;
+      case SideY0:
+        slavePoint = { .X = maxCubeIndex - masterPoint.X, .Y = maxCubeIndex, .Z = maxCubeIndex - masterPoint.Z };
+        break;
+      case SideY1:
+        slavePoint = { .X = maxCubeIndex - masterPoint.X, .Y = 0, .Z = maxCubeIndex - masterPoint.Z };
+        break;
+      case SideZ0:
+        slavePoint = { .X = maxCubeIndex - masterPoint.X, .Y = maxCubeIndex - masterPoint.Y, .Z = maxCubeIndex };
+        break;
+      case SideZ1:
+        slavePoint = { .X = maxCubeIndex - masterPoint.X, .Y = maxCubeIndex - masterPoint.Y, .Z = 0 };
+        break;
+    }
+
+    Line(masterPoint.X, masterPoint.Y, masterPoint.Z, slavePoint.X, slavePoint.Y, slavePoint.Z);
+  }
+
+  ChainElementsUpdate(STICK_ELEMENT_COUNT);
+}
+
+TimeWorker StickWorker = TimeWorker(STICK_EFFECT_DELAY, StickClbk);
 
 
 bool ButtonPressed = false;
@@ -2187,6 +2268,9 @@ void ReInitEffect()
       break;
     case ChainEffect:
       InitChain();
+      break;
+    case StickEffect:
+      InitStick();
       break;
   }
 }
@@ -2260,6 +2344,9 @@ void CubeControllerWorkerClbk(bool eventExec)
       break;
     case ChainEffect:
       ChainWorker.Update();
+      break;
+    case StickEffect:
+      StickWorker.Update();
       break;
     default:
       SetCube(0);
