@@ -122,7 +122,7 @@ struct Point2D
 const int MaxCubeLenght2 = CUBE_DIMENSION * CUBE_DIMENSION;
 const int MaxCubeLenght = CUBE_DIMENSION * CUBE_DIMENSION * CUBE_DIMENSION;
 volatile uint8_t CubeBuffer[CUBE_DIMENSION][CUBE_DIMENSION];
-AppState CurrentAppState = FullMatrixOff;
+AppState CurrentAppState = FullMatrixOn;
 
 
 //-------------------- common
@@ -2227,50 +2227,147 @@ void StickClbk(bool eventExec)
 TimeWorker StickWorker = TimeWorker(STICK_EFFECT_DELAY, StickClbk);
 
 
+void FullMatrixOnUpdate()
+{
+  SetCube(255);
+}
+
+void RainEffectUpdate()
+{
+  RainEffectWorker.Update();
+}
+
+void PongEffectUpdate()
+{
+  PongWorker.Update();
+}
+
+void BreathEffectUpdate()
+{
+  BreathWorker.Update();
+}
+
+void FlipFlopEffectUpdate()
+{
+  FlipFlopWorker.Update();
+}
+
+void StarsEffectUpdate()
+{
+  StarsWorker.Update();
+}
+
+void LayerEffectUpdate()
+{
+  LayerWorker.Update();
+  LayerForceWorker.Update();
+}
+
+void CubeEffectUpdate()
+{
+  CubeEffectWorker.Update();
+}
+
+void BorderEffectUpdate()
+{
+  BorderWorker.Update();
+}
+
+void TextEffectUpdate()
+{
+  TextEffectWorker.Update();
+}
+
+void WaveEffectUpdate()
+{
+  WaveEffectWorker.Update();
+}
+
+void RotatingBeaconEffectUpdate()
+{
+  RotatingBeaconWorker.Update();
+}
+
+void ChainEffectUpdate()
+{
+  ChainWorker.Update();
+}
+
+void StickEffectUpdate()
+{
+  StickWorker.Update();
+}
+
+void FullMatrixOffUpdate()
+{
+  SetCube(0);
+}
+
 bool ButtonPressed = false;
+void (*CurrentUpdateEffectClbk)() = FullMatrixOnUpdate;
 
 void ReInitEffect()
 {
   switch (CurrentAppState)
   {
+    case FullMatrixOn:
+      CurrentUpdateEffectClbk = FullMatrixOnUpdate;
+      break;
     case RainEffect:
       InitRain();
+      CurrentUpdateEffectClbk = RainEffectUpdate;
       break;
     case PongEffect:
       InitPong();
+      CurrentUpdateEffectClbk = PongEffectUpdate;
       break;
     case BreathEffect:
       InitBreath();
+      CurrentUpdateEffectClbk = BreathEffectUpdate;
       break;
     case FlipFlopEffect:
       InitFlipFlop();
+      CurrentUpdateEffectClbk = FlipFlopEffectUpdate;
       break;
     case StarsEffect:
       InitStars();
+      CurrentUpdateEffectClbk = StarsEffectUpdate;
       break;
     case LayerEffect:
       InitLayer();
+      CurrentUpdateEffectClbk = LayerEffectUpdate;
       break;
     case CubeEffect:
       InitCubeEffect();
+      CurrentUpdateEffectClbk = CubeEffectUpdate;
       break;
     case BorderEffect:
       InitBorder();
+      CurrentUpdateEffectClbk = BorderEffectUpdate;
       break;
     case TextEffect:
       InitTextEffect();
+      CurrentUpdateEffectClbk = TextEffectUpdate;
       break;
     case WaveEffect:
       InitWave();
+      CurrentUpdateEffectClbk = WaveEffectUpdate;
       break;
     case RotatingBeaconEffect:
       InitRotatingBeacon();
+      CurrentUpdateEffectClbk = RotatingBeaconEffectUpdate;
       break;
     case ChainEffect:
       InitChain();
+      CurrentUpdateEffectClbk = ChainEffectUpdate;
       break;
     case StickEffect:
       InitStick();
+      CurrentUpdateEffectClbk = StickEffectUpdate;
+      break;
+    case FullMatrixOff:
+    default:
+      CurrentUpdateEffectClbk = FullMatrixOffUpdate;
       break;
   }
 }
@@ -2300,56 +2397,7 @@ void CubeControllerWorkerClbk(bool eventExec)
     ButtonPressed = false;
   }
 
-  switch (CurrentAppState)
-  {    
-    case FullMatrixOn:
-      SetCube(255);
-      break;
-    case RainEffect:
-      RainEffectWorker.Update();
-      break;
-    case PongEffect:
-      PongWorker.Update();
-      break;
-    case BreathEffect:
-      BreathWorker.Update();
-      break;
-    case FlipFlopEffect:
-      FlipFlopWorker.Update();
-      break;
-    case StarsEffect:
-      StarsWorker.Update();
-      break;
-    case LayerEffect:
-      LayerWorker.Update();
-      LayerForceWorker.Update();
-      break;
-    case CubeEffect:
-      CubeEffectWorker.Update();
-      break;
-    case BorderEffect:
-      BorderWorker.Update();
-      break;
-    case TextEffect:
-      TextEffectWorker.Update();
-      break;
-    case WaveEffect:
-      WaveEffectWorker.Update();
-      break;
-    case RotatingBeaconEffect:
-      RotatingBeaconWorker.Update();
-      break;
-    case ChainEffect:
-      ChainWorker.Update();
-      break;
-    case StickEffect:
-      StickWorker.Update();
-      break;
-    case FullMatrixOff:
-    default:
-      SetCube(0);
-      break;
-  }
+  (*CurrentUpdateEffectClbk)();
 }
 
 TimeWorker CubeControllerWorker = TimeWorker(CUBE_CONTROLLER_DELAY, CubeControllerWorkerClbk);
@@ -2377,7 +2425,17 @@ volatile int CurrentLayerRender = 0;
 
 ISR(TIMER1_COMPA_vect)
 {
-  CurrentLayerRender %= CUBE_DIMENSION;
+  if (CurrentLayerRender == CUBE_DIMENSION)
+  {   
+    FastSetPin(LATCH_PIN, LOW);
+    for (int layer = 0; layer < CUBE_DIMENSION + 1; ++layer)
+    {
+      FastShiftOut(DATA_PIN, CLOCK_PIN, LSBFIRST, 0);
+    }
+    FastSetPin(LATCH_PIN, HIGH);
+
+    CurrentLayerRender = 0;
+  }
 
   FastSetPin(LATCH_PIN, LOW);
   FastShiftOut(DATA_PIN, CLOCK_PIN, MSBFIRST, (1 << CurrentLayerRender) SCHEMA_BUG);
