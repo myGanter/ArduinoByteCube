@@ -2301,10 +2301,7 @@ void CubeControllerWorkerClbk(bool eventExec)
   }
 
   switch (CurrentAppState)
-  {
-    case FullMatrixOff:
-      SetCube(0);
-      break;
+  {    
     case FullMatrixOn:
       SetCube(255);
       break;
@@ -2348,6 +2345,7 @@ void CubeControllerWorkerClbk(bool eventExec)
     case StickEffect:
       StickWorker.Update();
       break;
+    case FullMatrixOff:
     default:
       SetCube(0);
       break;
@@ -2379,17 +2377,7 @@ volatile int CurrentLayerRender = 0;
 
 ISR(TIMER1_COMPA_vect)
 {
-  if (CurrentLayerRender == CUBE_DIMENSION)
-  {   
-    FastSetPin(LATCH_PIN, LOW);
-    for (int layer = 0; layer < CUBE_DIMENSION + 1; ++layer)
-    {
-      FastShiftOut(DATA_PIN, CLOCK_PIN, LSBFIRST, 0);
-    }
-    FastSetPin(LATCH_PIN, HIGH);
-
-    CurrentLayerRender = 0;
-  }
+  CurrentLayerRender %= CUBE_DIMENSION;
 
   FastSetPin(LATCH_PIN, LOW);
   FastShiftOut(DATA_PIN, CLOCK_PIN, MSBFIRST, (1 << CurrentLayerRender) SCHEMA_BUG);
