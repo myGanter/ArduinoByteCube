@@ -58,6 +58,9 @@
 #define STICK_EFFECT_DELAY 60 //millis
 #define STICK_ELEMENT_COUNT 1 //1 to n; STICK_ELEMENT_COUNT <= CHAIN_ELEMENT_COUNT
 
+#define SIDE_MOVE_EFFECT_DELAY 80 //millis
+#define SIDE_MOVE_END_DELAY 200 //millis
+
 #include <avr/io.h>
 #include <avr/interrupt.h>
 
@@ -77,7 +80,8 @@ enum AppState : int
   RotatingBeaconEffect = 11,
   ChainEffect = 12,
   StickEffect = 13,
-  FullMatrixOff = 14
+  SideMoveEffect = 14,
+  FullMatrixOff = 15
 };
 
 enum NXYZ : int
@@ -122,6 +126,7 @@ struct Point2D
 const int MaxCubeLenght2 = CUBE_DIMENSION * CUBE_DIMENSION;
 const int MaxCubeLenght = CUBE_DIMENSION * CUBE_DIMENSION * CUBE_DIMENSION;
 volatile uint8_t CubeBuffer[CUBE_DIMENSION][CUBE_DIMENSION];
+volatile uint8_t CubeDoubleBuffer[CUBE_DIMENSION][CUBE_DIMENSION];
 AppState CurrentAppState = FullMatrixOn;
 
 
@@ -423,6 +428,13 @@ template<typename T> class Stack
 
 
 //-------------------- drawing
+inline void DoubleBufferSwitch()
+{
+  cli();
+  memcpy(CubeDoubleBuffer, CubeBuffer, sizeof(CubeBuffer));
+  sei();
+}
+
 void SetCube(uint8_t value)
 {
   SetArrRank2<uint8_t>((uint8_t*)CubeBuffer, CUBE_DIMENSION, CUBE_DIMENSION, value);
@@ -677,6 +689,8 @@ void RainEffectWorkerClbk(bool eventExec)
 
     SetPoint(Rain[i].X, Rain[i].Y, Rain[i].Z);       
   }
+
+  DoubleBufferSwitch();
 }
 
 TimeWorker RainEffectWorker = TimeWorker(RAIN_EFFECT_DELAY, RainEffectWorkerClbk);
@@ -761,6 +775,8 @@ void PongWorkerClbk(bool eventExec)
       SetPoint(Pongs[i][j].X, Pongs[i][j].Y, Pongs[i][j].Z);
     }
   }
+
+  DoubleBufferSwitch();
 }
 
 TimeWorker PongWorker = TimeWorker(PONG_EFFECT_DELAY, PongWorkerClbk);
@@ -778,6 +794,8 @@ void InitBreath()
   BreathReverse = false;
   BreathContinueWorkerInvoked = false;
   BreathContinueWorkerFlag = false;
+
+  DoubleBufferSwitch();
 }
 
 void BreathContinueWorkerClbk(bool eventExec)
@@ -856,6 +874,8 @@ void BreathWorkerClbk(bool eventExec)
     SetPoint(p.X, p.Y, p.Z, !BreathReverse);
     SetPoints++;
   }
+
+  DoubleBufferSwitch();
 }
 
 TimeWorker BreathWorker = TimeWorker(BREATH_DELAY, BreathWorkerClbk);
@@ -1043,6 +1063,8 @@ void FlipFlopClbk(bool eventExec)
 
   DrawLines();
 
+  DoubleBufferSwitch();
+
   int8_t *firstStapField0;
   int8_t *firstStapField1;
   switch (FirstStap)
@@ -1109,6 +1131,7 @@ TimeWorker FlipFlopWorker = TimeWorker(FLIP_FLOP_EFFECT_DELAY, FlipFlopClbk);
 void InitStars()
 {
   SetCube(0);
+  DoubleBufferSwitch();
 }
 
 void StarsWorkerClbk(bool eventExec)
@@ -1117,6 +1140,8 @@ void StarsWorkerClbk(bool eventExec)
     SetPoint(random(CUBE_DIMENSION), random(CUBE_DIMENSION), random(CUBE_DIMENSION));
   else
     UnSetPoint(random(CUBE_DIMENSION), random(CUBE_DIMENSION), random(CUBE_DIMENSION));
+
+  DoubleBufferSwitch();
 }
 
 TimeWorker StarsWorker = TimeWorker(STARS_EFFECT_DELAY, StarsWorkerClbk);
@@ -1153,6 +1178,8 @@ void LayerWorkerClbk(bool eventExec)
       SetPlaneZ(LayerIndex, 255);
       break;
   }
+
+  DoubleBufferSwitch();
 
   LayerIndex++;
   LayerIndex %= CUBE_DIMENSION;
@@ -1210,6 +1237,8 @@ void InitBorder()
 {
   SetCube(0);
 
+  DoubleBufferSwitch();
+
   BorderDiraction = Ze;
   BorderPoint = { .X = 0, .Y = 0, .Z = 0 };
   BorderInc = 1;
@@ -1222,6 +1251,8 @@ void BorderWorkerClbk(bool eventExec)
     UnSetPoint(BorderPoint.X, BorderPoint.Y, BorderPoint.Z);  
   else  
     SetPoint(BorderPoint.X, BorderPoint.Y, BorderPoint.Z);
+
+  DoubleBufferSwitch();
 
   bool reInitDiraction = false;
 
@@ -1327,7 +1358,9 @@ void CubeEffectWorkerClbk(bool eventExec)
     UnSetPlaneY(CUBE_DIMENSION - 1 - i);
     UnSetPlaneZ(i);
     UnSetPlaneZ(CUBE_DIMENSION - 1 - i);
-  }  
+  }
+
+  DoubleBufferSwitch();
 
   CubeRadius += CubeRadiusCounter;
 
@@ -1769,6 +1802,8 @@ void TextEffectWorkerClbk(bool eventExec)
   if (Text[TextCharIndex] != ' ')
     DrawChar(Chars[charAscii], CharsSize[charAscii], TextZIndex);
 
+  DoubleBufferSwitch();
+
   TextZIndex++;
   if (TextZIndex == CUBE_DIMENSION)
   {
@@ -1781,6 +1816,7 @@ void TextEffectWorkerClbk(bool eventExec)
     }
   }
 }
+
 TimeWorker TextEffectWorker = TimeWorker(TEXT_EFFECT_DELAY, TextEffectWorkerClbk);
 
 
@@ -1808,6 +1844,8 @@ void WaveEffectWorkerClbk(bool eventExec)
   }
 
   CornerCounter += CornerCounterInc;
+
+  DoubleBufferSwitch();
 }
 
 TimeWorker WaveEffectWorker = TimeWorker(WAVE_EFFECT_DELAY, WaveEffectWorkerClbk);
@@ -1843,6 +1881,8 @@ void RotatingBeaconClbk(bool eventExec)
       SetPoint(point.X, j, point.Z);
     }    
   }
+
+  DoubleBufferSwitch();
 
   Point lastPoint = BeaconWorm[BeaconWormIndex];
   BeaconWormIndex = (BeaconWormIndex + 1) % ROTATING_BEACON_ELEMENT_COUNT;
@@ -2173,6 +2213,8 @@ void ChainClbk(bool eventExec)
 
   ChainPrint();
 
+  DoubleBufferSwitch();
+
   ChainElementsUpdate(CHAIN_ELEMENT_COUNT);
 }
 
@@ -2221,15 +2263,256 @@ void StickClbk(bool eventExec)
     Line(masterPoint.X, masterPoint.Y, masterPoint.Z, slavePoint.X, slavePoint.Y, slavePoint.Z);
   }
 
+  DoubleBufferSwitch();
+
   ChainElementsUpdate(STICK_ELEMENT_COUNT);
 }
 
 TimeWorker StickWorker = TimeWorker(STICK_EFFECT_DELAY, StickClbk);
 
 
+int8_t SideMoveXAxisIncrement(Point* p, int8_t incValue)
+{
+  p->X += incValue;
+
+  return p->X; 
+}
+
+int8_t SideMoveYAxisIncrement(Point* p, int8_t incValue)
+{
+  p->Y += incValue;
+
+  return p->Y; 
+}
+
+int8_t SideMoveZAxisIncrement(Point* p, int8_t incValue)
+{
+  p->Z += incValue;
+
+  return p->Z; 
+}
+
+struct SideMoveInfo
+{
+  Point Points[4];
+  int8_t (*AxisIncrement)(Point* p, int8_t incValue);
+  NXYZ StaticAxis;
+};
+
+SideMoveInfo SideMoveInfos[6] = 
+{
+  { .Points = { { .X = 0, .Y = 0, .Z = 0 }, { .X = 0, .Y = 0, .Z = CUBE_DIMENSION - 1 }, { .X = 0, .Y = CUBE_DIMENSION - 1, .Z = CUBE_DIMENSION - 1 }, { .X = 0, .Y = CUBE_DIMENSION - 1, .Z = 0 } }, .AxisIncrement = SideMoveXAxisIncrement, .StaticAxis = Xe },
+  { .Points = { { .X = CUBE_DIMENSION - 1, .Y = 0, .Z = 0 }, { .X = CUBE_DIMENSION - 1, .Y = 0, .Z = CUBE_DIMENSION - 1 }, { .X = CUBE_DIMENSION - 1, .Y = CUBE_DIMENSION - 1, .Z = CUBE_DIMENSION - 1 }, { .X = CUBE_DIMENSION - 1, .Y = CUBE_DIMENSION - 1, .Z = 0 } }, .AxisIncrement = SideMoveXAxisIncrement, .StaticAxis = Xe },
+
+  { .Points = { { .X = 0, .Y = 0, .Z = 0 }, { .X = 0, .Y = 0, .Z = CUBE_DIMENSION - 1 }, { .X = CUBE_DIMENSION - 1, .Y = 0, .Z = CUBE_DIMENSION - 1 }, { .X = CUBE_DIMENSION - 1, .Y = 0, .Z = 0 } }, .AxisIncrement = SideMoveYAxisIncrement, .StaticAxis = Ye },
+  { .Points = { { .X = 0, .Y = CUBE_DIMENSION - 1, .Z = 0 }, { .X = 0, .Y = CUBE_DIMENSION - 1, .Z = CUBE_DIMENSION - 1 }, { .X = CUBE_DIMENSION - 1, .Y = CUBE_DIMENSION - 1, .Z = CUBE_DIMENSION - 1 }, { .X = CUBE_DIMENSION - 1, .Y = CUBE_DIMENSION - 1, .Z = 0 } }, .AxisIncrement = SideMoveYAxisIncrement, .StaticAxis = Ye },
+
+  { .Points = { { .X = 0, .Y = 0, .Z = 0 }, { .X = CUBE_DIMENSION - 1, .Y = 0, .Z = 0 }, { .X = CUBE_DIMENSION - 1, .Y = CUBE_DIMENSION - 1, .Z = 0 }, { .X = 0, .Y = CUBE_DIMENSION - 1, .Z = 0 } }, .AxisIncrement = SideMoveZAxisIncrement, .StaticAxis = Ze },
+  { .Points = { { .X = 0, .Y = 0, .Z = CUBE_DIMENSION - 1 }, { .X = CUBE_DIMENSION - 1, .Y = 0, .Z = CUBE_DIMENSION - 1 }, { .X = CUBE_DIMENSION - 1, .Y = CUBE_DIMENSION - 1, .Z = CUBE_DIMENSION - 1 }, { .X = 0, .Y = CUBE_DIMENSION - 1, .Z = CUBE_DIMENSION - 1 } }, .AxisIncrement = SideMoveZAxisIncrement, .StaticAxis = Ze }
+};
+
+SidesXYZ SideMoveNextSide;
+Point SideMoveWorm[CUBE_DIMENSION];
+int8_t SideMoveWormIndex;
+
+int8_t (*SideMoveWormHeadAxisIncrement)(Point* p, int8_t incValue);
+int8_t SideMoveWormHeadIncrement;
+
+NXYZ SideMovePrintAxisIncrement;
+int8_t SideMovePrintIncrement;
+
+bool SideMoveContinueWorkerFlag;
+bool SideMoveIsNeedReInit;
+
+void SideMoveReInitStates()
+{
+  SidesXYZ currentSide = SideMoveNextSide;
+  int8_t rndPoontIndex = random(4);
+  Point mainPoint = SideMoveInfos[currentSide].Points[rndPoontIndex];
+  Point slavePoint = SideMoveInfos[currentSide].Points[(rndPoontIndex + 1) % 4];
+  NXYZ staticAxis = SideMoveInfos[currentSide].StaticAxis;
+
+  for (int8_t i = 0; i < 6; ++i)
+  {
+    if (currentSide == i)
+      continue;
+
+    bool mainPointFind = false;
+    bool slavePointFind = false;
+
+    for (int8_t j = 0; j < 4; ++j)
+    {
+      Point p = SideMoveInfos[i].Points[j];
+
+      if (p.X == mainPoint.X && p.Y == mainPoint.Y && p.Z == mainPoint.Z)
+        mainPointFind = true;
+      else if (p.X == slavePoint.X && p.Y == slavePoint.Y && p.Z == slavePoint.Z)
+        slavePointFind = true;
+    }
+
+    if (mainPointFind && slavePointFind)
+      SideMoveNextSide = i;
+  }
+
+  int8_t (*wormAxisIncrement)(Point* p, int8_t incValue);
+  int8_t wormIncrement;
+
+  switch (staticAxis)
+  {
+    case Xe:
+        SideMoveWormHeadAxisIncrement = SideMoveXAxisIncrement;
+        SideMoveWormHeadIncrement = mainPoint.X == 0 ? 1 : -1;
+
+        if (mainPoint.Y == slavePoint.Y)
+        {
+          SideMovePrintAxisIncrement = Ze;
+          SideMovePrintIncrement = mainPoint.Z == 0 ? 1 : -1;
+
+          wormAxisIncrement = SideMoveYAxisIncrement;
+          wormIncrement = mainPoint.Y == 0 ? 1 : -1;
+        }
+        else
+        {
+          SideMovePrintAxisIncrement = Ye;
+          SideMovePrintIncrement = mainPoint.Y == 0 ? 1 : -1;
+
+          wormAxisIncrement = SideMoveZAxisIncrement;
+          wormIncrement = mainPoint.Z == 0 ? 1 : -1;
+        }
+      break;
+    case Ye:
+        SideMoveWormHeadAxisIncrement = SideMoveYAxisIncrement;
+        SideMoveWormHeadIncrement = mainPoint.Y == 0 ? 1 : -1;
+
+        if (mainPoint.X == slavePoint.X)
+        {
+          SideMovePrintAxisIncrement = Ze;
+          SideMovePrintIncrement = mainPoint.Z == 0 ? 1 : -1;
+
+          wormAxisIncrement = SideMoveXAxisIncrement;
+          wormIncrement = mainPoint.X == 0 ? 1 : -1;
+        }
+        else
+        {
+          SideMovePrintAxisIncrement = Xe;
+          SideMovePrintIncrement = mainPoint.X == 0 ? 1 : -1;
+
+          wormAxisIncrement = SideMoveZAxisIncrement;
+          wormIncrement = mainPoint.Z == 0 ? 1 : -1;
+        }
+      break;
+    case Ze:
+        SideMoveWormHeadAxisIncrement = SideMoveZAxisIncrement;
+        SideMoveWormHeadIncrement = mainPoint.Z == 0 ? 1 : -1;
+
+        if (mainPoint.X == slavePoint.X)
+        {
+          SideMovePrintAxisIncrement = Ye;
+          SideMovePrintIncrement = mainPoint.Y == 0 ? 1 : -1;
+
+          wormAxisIncrement = SideMoveXAxisIncrement;
+          wormIncrement = mainPoint.X == 0 ? 1 : -1;
+        }
+        else
+        {
+          SideMovePrintAxisIncrement = Xe;
+          SideMovePrintIncrement = mainPoint.X == 0 ? 1 : -1;
+
+          wormAxisIncrement = SideMoveYAxisIncrement;
+          wormIncrement = mainPoint.Y == 0 ? 1 : -1;
+        }
+      break;
+  }
+
+  for (int8_t i = CUBE_DIMENSION - 1; i >= 0; --i)
+  {
+    SideMoveWorm[i] = mainPoint;
+    (*wormAxisIncrement)(&mainPoint, wormIncrement);
+  }
+  SideMoveWormIndex = CUBE_DIMENSION - 1;
+}
+
+void InitSideMove()
+{
+  SideMoveContinueWorkerFlag = false;
+  SideMoveIsNeedReInit = false;
+
+  SideMoveNextSide = (SidesXYZ)random(6);
+  SideMoveReInitStates();
+}
+
+void SideMoveContinueClbk(bool eventExec)
+{
+  if (eventExec)
+    return;
+
+  SideMoveIsNeedReInit = false;
+  SideMoveReInitStates();
+}
+
+TimeWorker SideMoveContinueWorker = TimeWorker(SIDE_MOVE_END_DELAY, SideMoveContinueClbk, &SideMoveContinueWorkerFlag, false);
+
+void SideMoveClbk(bool eventExec)
+{
+  if (SideMoveIsNeedReInit)
+  {
+    SideMoveContinueWorker.Update();
+  }
+
+  SetCube(0);
+  
+  NXYZ printAxisIncrement = SideMovePrintAxisIncrement;
+  int8_t printIncrement = SideMovePrintIncrement;
+
+  for (uint8_t i = 0; i < CUBE_DIMENSION; ++i)
+  {
+    Point p = SideMoveWorm[i];
+
+    for (uint8_t j = 0; j < CUBE_DIMENSION; ++j)
+    {
+      SetPoint(p.X, p.Y, p.Z);
+
+      switch (printAxisIncrement)
+      {
+        case Xe:
+          p.X += printIncrement;
+          break;
+        case Ye:
+          p.Y += printIncrement;
+          break;
+        case Ze:
+          p.Z += printIncrement;
+          break;
+      }
+    }
+  }
+
+  DoubleBufferSwitch();
+
+  if (!SideMoveIsNeedReInit)
+  {
+    Point headPoint = SideMoveWorm[SideMoveWormIndex++];
+    SideMoveWormIndex %= CUBE_DIMENSION;
+
+    int8_t newValue = (*SideMoveWormHeadAxisIncrement)(&headPoint, SideMoveWormHeadIncrement);
+
+    SideMoveWorm[SideMoveWormIndex] = headPoint;
+
+    if (newValue == 0 || newValue == CUBE_DIMENSION - 1)
+    {
+      SideMoveIsNeedReInit = true;
+      SideMoveContinueWorkerFlag = true;
+    }
+  }  
+}
+
+TimeWorker SideMoveWorker = TimeWorker(SIDE_MOVE_EFFECT_DELAY, SideMoveClbk);
+
+
 void FullMatrixOnUpdate()
 {
   SetCube(255);
+  DoubleBufferSwitch();
 }
 
 void RainEffectUpdate()
@@ -2298,9 +2581,15 @@ void StickEffectUpdate()
   StickWorker.Update();
 }
 
+void SideMoveEffectUpdate()
+{
+  SideMoveWorker.Update();
+}
+
 void FullMatrixOffUpdate()
 {
   SetCube(0);
+  DoubleBufferSwitch();
 }
 
 bool ButtonPressed = false;
@@ -2364,6 +2653,10 @@ void ReInitEffect()
     case StickEffect:
       InitStick();
       CurrentUpdateEffectClbk = StickEffectUpdate;
+      break;
+    case SideMoveEffect:
+      InitSideMove();
+      CurrentUpdateEffectClbk = SideMoveEffectUpdate;
       break;
     case FullMatrixOff:
     default:
@@ -2441,7 +2734,7 @@ ISR(TIMER1_COMPA_vect)
   FastShiftOut(DATA_PIN, CLOCK_PIN, MSBFIRST, (1 << CurrentLayerRender) SCHEMA_BUG);
   for (int row = CUBE_DIMENSION - 1; row > -1; --row)
   {
-    FastShiftOut(DATA_PIN, CLOCK_PIN, MSBFIRST, (CubeBuffer[CurrentLayerRender][row]) SCHEMA_BUG);
+    FastShiftOut(DATA_PIN, CLOCK_PIN, MSBFIRST, (CubeDoubleBuffer[CurrentLayerRender][row]) SCHEMA_BUG);
   }
   FastSetPin(LATCH_PIN, HIGH);
 
