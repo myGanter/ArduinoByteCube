@@ -9,7 +9,7 @@
 #define SCHEMA_BUG << 1 //a bug in my scheme, remove it if the scheme is correct
 
 #define CUBE_RENDER_LAYER_DELAY 800 //micros
-#define CUBE_CONTROLLER_DELAY 10 //millis
+#define CUBE_CONTROLLER_DELAY 5 //millis
 
 #define CPU_FREQUENCY 16000000 //Hz
 #define FREQUENCY_DIVIDER (1 << CS10) | (1 << CS12) //divides by 1024
@@ -61,6 +61,9 @@
 #define SIDE_MOVE_EFFECT_DELAY 80 //millis
 #define SIDE_MOVE_END_DELAY 200 //millis
 
+#define FAN_EFFECT_DELAY 40 //millis
+#define FAN_ANGLE_CHANGE_SPEED_DELAY 1000 //millis
+
 #include <avr/io.h>
 #include <avr/interrupt.h>
 
@@ -81,7 +84,8 @@ enum AppState : int
   ChainEffect = 12,
   StickEffect = 13,
   SideMoveEffect = 14,
-  FullMatrixOff = 15
+  FanEffect = 15,
+  FullMatrixOff = 16
 };
 
 enum NXYZ : int
@@ -2509,6 +2513,109 @@ void SideMoveClbk(bool eventExec)
 TimeWorker SideMoveWorker = TimeWorker(SIDE_MOVE_EFFECT_DELAY, SideMoveClbk);
 
 
+float FanAngle;
+float FanAngleIncrement;
+const int8_t FanZIndex = (CUBE_DIMENSION - 1) / 2;
+const int8_t FanSize = FanZIndex;
+const int8_t FanXIndex = CUBE_DIMENSION - 2;
+
+float FanTargetIncrement;
+int8_t FanTargetIncrementCycles;
+
+void InitFan()
+{
+  FanAngle = 0;
+  FanAngleIncrement = 0.1f;
+
+  FanTargetIncrement = 0;
+  FanTargetIncrementCycles = 0;
+
+  SetCube(0);
+  Line(FanXIndex, FanZIndex, FanZIndex, 0, FanZIndex, FanZIndex);
+  Line(1, FanZIndex, FanZIndex, 1, CUBE_DIMENSION - 1, FanZIndex);
+}
+
+inline int8_t FanNormalizeValue(int8_t value)
+{
+  if (value < 0)
+    return 0;
+  else if (value >= CUBE_DIMENSION)
+    return CUBE_DIMENSION - 1;
+  else
+    return value;
+}
+
+void FanAngleChangeSpeedClbk(bool eventExec)
+{
+  if (FanTargetIncrementCycles <= 0)
+  {
+    FanTargetIncrement = RandomFloat(3);
+    if (random(10) > 7)
+      FanTargetIncrement = -FanTargetIncrement;
+
+    FanTargetIncrementCycles = random(16) + 5; //5 - 20    
+  }
+
+  float increment = FanAngleIncrement;
+  float diff = increment - FanTargetIncrement;
+
+  if (abs(diff) > 0.1f)
+  {
+    if (diff > 0)
+      increment -= 0.03f;
+    else
+      increment += 0.03f;
+
+    if (increment > 1)
+      increment = 1;
+    else if (increment < -1)
+      increment = -1;
+
+    FanAngleIncrement = increment;
+  }
+  else
+  {
+    FanTargetIncrementCycles--;
+  }
+}
+
+TimeWorker FanAngleChangeSpeedWorker = TimeWorker(FAN_ANGLE_CHANGE_SPEED_DELAY, FanAngleChangeSpeedClbk);
+
+void FanClbk(bool eventExec)
+{
+  FanAngleChangeSpeedWorker.Update();
+
+  float angle = FanAngle;
+  float angleIncrement = FanAngleIncrement;
+
+  FanAngle += angleIncrement;
+
+  int8_t x = (int8_t)round(cos(angle) * FanSize);
+  int8_t y = (int8_t)round(sin(angle) * FanSize);  
+
+  if (abs(x) == abs(y))
+  {
+    if (x > 0 && y < 0)
+      y -= 1;
+    else if (x > 0 && y > 0)
+      x += 1;
+    else if (x < 0 && y > 0)
+      y += 1;
+    else if (x < 0 && y < 0)
+      x -= 1;
+  }
+
+  UnSetPlaneX(FanXIndex);
+
+  Line(FanXIndex, FanZIndex, FanZIndex, FanXIndex, FanNormalizeValue(y + FanZIndex), FanNormalizeValue(x + FanZIndex));
+  Line(FanXIndex, FanZIndex, FanZIndex, FanXIndex, FanNormalizeValue(-y + FanZIndex), FanNormalizeValue(-x + FanZIndex));
+
+  DoubleBufferSwitch();
+}
+
+TimeWorker FanWorker = TimeWorker(FAN_EFFECT_DELAY, FanClbk);
+
+
 void FullMatrixOnUpdate()
 {
   SetCube(255);
@@ -2586,6 +2693,11 @@ void SideMoveEffectUpdate()
   SideMoveWorker.Update();
 }
 
+void FanEffectUpdate()
+{
+  FanWorker.Update();
+}
+
 void FullMatrixOffUpdate()
 {
   SetCube(0);
@@ -2657,6 +2769,10 @@ void ReInitEffect()
     case SideMoveEffect:
       InitSideMove();
       CurrentUpdateEffectClbk = SideMoveEffectUpdate;
+      break;
+    case FanEffect:
+      InitFan();
+      CurrentUpdateEffectClbk = FanEffectUpdate;
       break;
     case FullMatrixOff:
     default:
