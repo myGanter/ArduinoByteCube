@@ -2701,10 +2701,9 @@ void SlowPointsClbk(bool eventExec)
 TimeWorker SlowPointsWorker = TimeWorker(SLOW_POINTS_EFFECT_DELAY, SlowPointsClbk);
 
 
-void FullMatrixOnUpdate()
+void NOPUpdate()
 {
-  SetCube(255);
-  DoubleBufferSwitch();
+  //NOP
 }
 
 void RainEffectUpdate()
@@ -2788,21 +2787,17 @@ void SlowPointsUpdate()
   SlowPointsWorker.Update();
 }
 
-void FullMatrixOffUpdate()
-{
-  SetCube(0);
-  DoubleBufferSwitch();
-}
-
 bool ButtonPressed = false;
-void (*CurrentUpdateEffectClbk)() = FullMatrixOnUpdate;
+void (*CurrentUpdateEffectClbk)() = NOPUpdate;
 
 void ReInitEffect()
 {
   switch (CurrentAppState)
   {
     case FullMatrixOn:
-      CurrentUpdateEffectClbk = FullMatrixOnUpdate;
+      SetCube(255);
+      DoubleBufferSwitch();
+      CurrentUpdateEffectClbk = NOPUpdate;
       break;
     case RainEffect:
       InitRain();
@@ -2870,7 +2865,9 @@ void ReInitEffect()
       break;
     case FullMatrixOff:
     default:
-      CurrentUpdateEffectClbk = FullMatrixOffUpdate;
+      SetCube(0);
+      DoubleBufferSwitch();
+      CurrentUpdateEffectClbk = NOPUpdate;
       break;
   }
 }
