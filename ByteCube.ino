@@ -64,6 +64,9 @@
 #define FAN_EFFECT_DELAY 40 //millis
 #define FAN_ANGLE_CHANGE_SPEED_DELAY 1000 //millis
 
+#define SLOW_POINTS_EFFECT_DELAY 60000 //millis
+#define SLOW_POINTS_COUNT 5
+
 #include <avr/io.h>
 #include <avr/interrupt.h>
 
@@ -85,7 +88,8 @@ enum AppState : int
   StickEffect = 13,
   SideMoveEffect = 14,
   FanEffect = 15,
-  FullMatrixOff = 16
+  SlowPointsEffect = 16,
+  FullMatrixOff = 17
 };
 
 enum NXYZ : int
@@ -468,6 +472,36 @@ void SetPoint(int layer, int line, int cell, bool value)
 inline bool CheckPoint(int layer, int line, int cell)
 {
   return CubeBuffer[layer][line] & (1 << cell);
+}
+
+void GetFreePoint(int startIndex, bool pointMustBeValue, int8_t* x, int8_t* y, int8_t* z)
+{
+  Point p;
+  int maxCount = 0;
+
+  GetCoordinateFromIndex(startIndex, &p.X, &p.Y, &p.Z);
+
+  while (CheckPoint(p.X, p.Y, p.Z) != pointMustBeValue)
+  {
+    if (maxCount == MaxCubeLenght)
+    {
+      p.X = 0;
+      p.Y = 0;
+      p.Z = 0;
+      break;
+    }
+
+    if (++startIndex >= MaxCubeLenght)
+      startIndex = 0;
+
+    GetCoordinateFromIndex(startIndex, &p.X, &p.Y, &p.Z);  
+
+    ++maxCount;
+  }
+
+  *x = p.X;
+  *y = p.Y;
+  *z = p.Z;
 }
 
 void SetPlaneX(int layer, int value)
@@ -2616,6 +2650,57 @@ void FanClbk(bool eventExec)
 TimeWorker FanWorker = TimeWorker(FAN_EFFECT_DELAY, FanClbk);
 
 
+void InitSlowPoints()
+{
+  SetCube(0);
+
+  Point p;
+
+  for (uint8_t i = 0; i < SLOW_POINTS_COUNT; ++i)
+  {
+    int index = random(MaxCubeLenght);
+
+    GetFreePoint(index, false, &p.X, &p.Y, &p.Z);
+
+    SetPoint(p.X, p.Y, p.Z);
+  }
+
+  DoubleBufferSwitch();
+}
+
+void SlowPointsClbk(bool eventExec)
+{
+  int8_t targetPixel = random(SLOW_POINTS_COUNT);
+  int8_t currentPixel = -1;
+  Point p;
+  
+  for (int i = 0; i < MaxCubeLenght; ++i)
+  {
+    GetCoordinateFromIndex(i, &p.X, &p.Y, &p.Z);
+
+    if (CheckPoint(p.X, p.Y, p.Z))
+      ++currentPixel;
+
+    if (currentPixel == targetPixel)
+    {
+      Point newP;
+      int index = random(MaxCubeLenght);
+
+      GetFreePoint(index, false, &newP.X, &newP.Y, &newP.Z);
+
+      UnSetPoint(p.X, p.Y, p.Z);
+      SetPoint(newP.X, newP.Y, newP.Z);
+
+      break;
+    }
+  }
+
+  DoubleBufferSwitch();
+}
+
+TimeWorker SlowPointsWorker = TimeWorker(SLOW_POINTS_EFFECT_DELAY, SlowPointsClbk);
+
+
 void FullMatrixOnUpdate()
 {
   SetCube(255);
@@ -2698,6 +2783,11 @@ void FanEffectUpdate()
   FanWorker.Update();
 }
 
+void SlowPointsUpdate()
+{
+  SlowPointsWorker.Update();
+}
+
 void FullMatrixOffUpdate()
 {
   SetCube(0);
@@ -2773,6 +2863,10 @@ void ReInitEffect()
     case FanEffect:
       InitFan();
       CurrentUpdateEffectClbk = FanEffectUpdate;
+      break;
+    case SlowPointsEffect:
+      InitSlowPoints();
+      CurrentUpdateEffectClbk = SlowPointsUpdate;
       break;
     case FullMatrixOff:
     default:
