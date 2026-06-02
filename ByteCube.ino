@@ -716,7 +716,7 @@ void RainEffectWorkerClbk(bool eventExec)
   {
     Rain[i].Y += RainSpeed[i];
     
-    if ((int8_t)Rain[i].Y == CUBE_DIMENSION)
+    if (((int8_t)Rain[i].Y) >= CUBE_DIMENSION)
     {
       Rain[i].X = random(CUBE_DIMENSION);
       Rain[i].Z = random(CUBE_DIMENSION);       
